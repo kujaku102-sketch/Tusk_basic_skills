@@ -36,6 +36,9 @@ MOUSEEVENTF_RIGHTUP = 0x0010
 MOUSEEVENTF_MIDDLEDOWN = 0x0020
 MOUSEEVENTF_MIDDLEUP = 0x0040
 MOUSEEVENTF_WHEEL = 0x0800
+MOUSEEVENTF_ABSOLUTE = 0x8000
+MOUSEEVENTF_VIRTUALDESK = 0x4000
+SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN = 76, 77, 78, 79
 
 MAPVK_VK_TO_VSC = 0
 
@@ -163,6 +166,27 @@ class WindowActuator:
         inp.union.mi = MOUSEINPUT(dx=dx, dy=dy, mouseData=data, dwFlags=flags, time=0, dwExtraInfo=0)
         return inp
 
+    def _absolute_move_input(self, abs_x: int, abs_y: int) -> INPUT:
+        """仮想デスクトップ全体を 0..65535 にした絶対座標の「マウスが動いた」入力"""
+        vx = self._user32.GetSystemMetrics(SM_XVIRTUALSCREEN)
+        vy = self._user32.GetSystemMetrics(SM_YVIRTUALSCREEN)
+        vw = max(1, self._user32.GetSystemMetrics(SM_CXVIRTUALSCREEN) - 1)
+        vh = max(1, self._user32.GetSystemMetrics(SM_CYVIRTUALSCREEN) - 1)
+        nx = int(round((abs_x - vx) * 65535 / vw))
+        ny = int(round((abs_y - vy) * 65535 / vh))
+        return self._make_mouse_input(
+            MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK, dx=nx, dy=ny
+        )
+
+    def _point_to(self, abs_x: int, abs_y: int, settle: float = 0.05) -> None:
+        """カーソルを置き、アプリに「マウスが動いた」を必ず届けてから戻る。
+        SetCursorPos だけだと移動の知らせがボタンより遅れることがあり、アプリ (egui など) は
+        押した位置を前のカーソル位置と取り違える (ボタンが押せない・選択がずれて動く)。
+        SendInput の移動はボタンと同じ入力の列に入るので、押す前に必ず届く"""
+        win32api.SetCursorPos((abs_x, abs_y))
+        self._send_inputs([self._absolute_move_input(abs_x, abs_y)])
+        time.sleep(settle)
+
     def _make_vk_input(self, vk: int, key_up: bool = False) -> INPUT:
         scan = self._user32.MapVirtualKeyW(vk, MAPVK_VK_TO_VSC)
         flags = 0
@@ -207,8 +231,7 @@ class WindowActuator:
     ) -> Tuple[int, int]:
         """Move cursor to clamped window-relative coordinate and return (rel_x_clamped, rel_y_clamped)."""
         abs_x, abs_y = self._prepare_target_point(rel_x, rel_y, normalized=normalized)
-        win32api.SetCursorPos((abs_x, abs_y))
-        time.sleep(0.03)
+        self._point_to(abs_x, abs_y, settle=0.03)
         return self.binder.to_relative_coords(abs_x, abs_y)
 
     def click(
@@ -224,8 +247,7 @@ class WindowActuator:
         Returns actual clamped relative (rel_x, rel_y) clicked.
         """
         abs_x, abs_y = self._prepare_target_point(rel_x, rel_y, normalized=normalized)
-        win32api.SetCursorPos((abs_x, abs_y))
-        time.sleep(0.04)
+        self._point_to(abs_x, abs_y)
 
         btn = button.lower().strip()
         if btn == "left":
@@ -253,8 +275,7 @@ class WindowActuator:
     ) -> Tuple[int, int]:
         """Double-click at window-relative (rel_x, rel_y) within OS double-click time threshold."""
         abs_x, abs_y = self._prepare_target_point(rel_x, rel_y, normalized=normalized)
-        win32api.SetCursorPos((abs_x, abs_y))
-        time.sleep(0.04)
+        self._point_to(abs_x, abs_y)
 
         for _ in range(2):
             self._send_inputs([self._make_mouse_input(MOUSEEVENTF_LEFTDOWN)])
@@ -284,8 +305,7 @@ class WindowActuator:
         abs_from_x, abs_from_y = self.binder.to_screen_coords(from_x, from_y, normalized=normalized)
         abs_to_x, abs_to_y = self.binder.to_screen_coords(to_x, to_y, normalized=normalized)
 
-        win32api.SetCursorPos((abs_from_x, abs_from_y))
-        time.sleep(0.05)
+        self._point_to(abs_from_x, abs_from_y)
         self._send_inputs([self._make_mouse_input(MOUSEEVENTF_LEFTDOWN)])
         time.sleep(0.05)
 
@@ -295,8 +315,7 @@ class WindowActuator:
             interp_x = int(round(abs_from_x + (abs_to_x - abs_from_x) * t))
             interp_y = int(round(abs_from_y + (abs_to_y - abs_from_y) * t))
             clamped_x, clamped_y = rect.clamp(interp_x, interp_y, margin=self.binder.clamp_margin)
-            win32api.SetCursorPos((clamped_x, clamped_y))
-            time.sleep(0.015)
+            self._point_to(clamped_x, clamped_y, settle=0.015)
 
         time.sleep(0.04)
         self._send_inputs([self._make_mouse_input(MOUSEEVENTF_LEFTUP)])
@@ -317,8 +336,7 @@ class WindowActuator:
     ) -> Tuple[int, int]:
         """Scroll mouse wheel at clamped window-relative position (positive = up, negative = down)."""
         abs_x, abs_y = self._prepare_target_point(rel_x, rel_y, normalized=normalized)
-        win32api.SetCursorPos((abs_x, abs_y))
-        time.sleep(0.04)
+        self._point_to(abs_x, abs_y)
 
         wheel_delta = int(clicks) * 120
         # Convert signed wheel delta to unsigned DWORD for MOUSEINPUT.mouseData
