@@ -59,6 +59,25 @@ class T(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             h.run_handoff(str(self.sp), runner=self.fake("", rc=1)[0])
 
+    def test_target_needs_pid_or_exe(self):
+        # タイトルだけの spec は断る (他人が起動した同じ名前の窓を掴んで閉じないため)
+        self.spec["target"] = {"title": "TuskFolio"}
+        self.sp.write_text(json.dumps(self.spec), encoding="utf-8")
+        run, calls = self.fake("{}")
+        with self.assertRaises(ValueError):
+            h.run_handoff(str(self.sp), runner=run)
+        self.assertEqual(calls, [], "agy は呼ばない")
+        with self.assertRaises(ValueError):
+            h.build_prompt(self.spec, Path("run.py"), self.d)
+        # PID ならプロンプトは --pid だけを使う
+        self.spec["target"] = {"pid": 4242, "title": "TuskFolio"}
+        p = h.build_prompt(self.spec, Path("run.py"), self.d)
+        self.assertIn("--pid 4242", p)
+        self.assertNotIn('--title "', p)
+
+    def test_close_window_needs_pid(self):
+        self.assertEqual(h.tool_cli(["--title", "TuskFolio", "--close-window"]), 2)
+
     def test_prompt_rules(self):
         p = h.build_prompt(self.spec, Path("run.py"), self.d)
         for s in ("--place", "Alt+F4", "--close-window", "タスクバー", "[A]"):

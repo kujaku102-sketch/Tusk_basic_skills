@@ -56,12 +56,10 @@ def _rel(p: Path) -> str:
 
 def build_prompt(spec: Dict[str, Any], run_py: Path, out_dir: Path) -> str:
     target = spec["target"]
-    if target.get("pid"):
-        sel = f"--pid {target['pid']}"
-    elif target.get("title"):
-        sel = f"--title \"{target['title']}\""
-    else:
-        raise ValueError("target には pid / title / exe のどれかが要る")
+    # 窓は PID でだけ捕まえる。タイトルだけだと、同じ名前の他人の窓 (別のセッションが起動したアプリ) を掴んで閉じうる
+    if not target.get("pid"):
+        raise ValueError("target には pid か exe が要る (タイトルだけでは捕まえない)")
+    sel = f"--pid {target['pid']}"
     exe_started = bool(target.get("exe"))
     place = spec.get("place")
     lines: List[str] = []
@@ -75,6 +73,7 @@ def build_prompt(spec: Dict[str, Any], run_py: Path, out_dir: Path) -> str:
     lines.append("決まり:")
     lines.append("- 窓の位置とサイズは先に決めてある。ずれていたら --place で直す(起動直後 1280x960 は下端がタスクバーに隠れる)。")
     lines.append("- 閉じるのは --close-window だけ。Alt+F4 は使わない(安全装置で止まる)。試験の最後に必ず閉じる。")
+    lines.append("- 窓は必ず上の --pid で捕まえる。--title は使わない(他の窓を掴まないため)。")
     lines.append(f"- キャプチャは PNG で {_rel(out_dir)} の下にだけ保存する。他の場所に書かない。")
     lines.append("- run.py のソースを読まない・書き換えない・別スクリプトを作らない。上の道具のコマンドだけ使う。各コマンドは数秒で終わる。")
     lines.append("- 操作の前後に --shot を撮り、画像ファイルを開いて確かめてから次へ進む。")
@@ -171,6 +170,8 @@ def run_handoff(spec_path: str, runner=subprocess.run) -> Dict[str, Any]:
     run_py = Path(__file__).resolve().parent.parent / "run.py"
     timeout = int(spec.get("timeout", 300))
     target = spec["target"]
+    if not target.get("pid") and not target.get("exe"):
+        raise ValueError("target には pid か exe が要る (タイトルだけでは捕まえない)")
     started = None
     if target.get("exe") and not target.get("pid"):
         started = launch_and_place(target["exe"], spec.get("document"), spec.get("place", "40,40,1200,800"))
@@ -295,6 +296,10 @@ def tool_cli(argv: List[str]) -> int:
 
     if a.pid is None and not a.title:
         print("--pid か --title が要る", file=sys.stderr)
+        return 2
+    if a.close_window and a.pid is None:
+        # 閉じるのは PID を名指ししたときだけ (タイトルで他人の窓を閉じない)
+        print("--close-window には --pid が要る", file=sys.stderr)
         return 2
     b = _bind(a)
     if a.place:

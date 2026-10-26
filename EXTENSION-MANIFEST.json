@@ -66,7 +66,7 @@
     },
     {
       "path": "skills/gamerseye/SKILL.md",
-      "sha256": "59d7c123b7da8ff1240b49ffe0bca1274cc13c450cf3b2610aeb7064c3b0bd7a"
+      "sha256": "300b469d4689a7af11989f7a822095106f4032ac601f3150f50f35b61285331b"
     },
     {
       "path": "skills/gamerseye/gamerseye_core/__init__.py",

@@ -94,7 +94,7 @@ spec.json:
  "items": [{"id": "menu_open", "check": "ファイルメニューを開くと一覧が出る"}],
  "out_dir": "キャプチャ保存先(PNG)", "timeout": 300}
 ```
-- `target`: `exe`(ハーネスが起動して配置) / `pid` / `title`(起動済みの窓)のどれか。
+- `target`: `exe`(ハーネスが起動して配置) か `pid`(起動済みの窓)。`title` だけでは捕まえない(同じ名前の他人の窓を掴んで閉じないため)。agy にも `--pid` だけを渡し、`--close-window` は `--pid` が要る。
 - 呼び出し: `agy -p … --model gemini-3.8-flash-medium --output-format json --json-schema … --sandbox --add-dir … --print-timeout <秒>s`。`--dangerously-skip-permissions` は使わない。
 - モデルは Flash のみ(`gemini-3.8-flash-{low,medium,high}`。spec の `model` か環境変数 `GAMERSEYE_AGY_MODEL`)。他は拒否。
 - 返り(標準出力と `out_dir/handoff_result.json`): `items[{id,result(pass|fail|unknown),evidence[],note}]`、`steps`、`captures`、`anomalies`。生出力は `out_dir/agy_raw.txt`。
