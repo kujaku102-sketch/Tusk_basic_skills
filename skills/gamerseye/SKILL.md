@@ -50,7 +50,7 @@ python .agents/skills/gamerseye/run.py --title "TuskFolio" --goal "全メニュ�
 - `--title <REGEX>`: ウィンドウタイトルの正規表現（例: `"TuskFolio"`, `"InDesign"`）
 - `--pid <PID>`: プロセスID（直接指定）
 - `--goal <TEXT>`: エージェントに達成させる目的・検証タスク
-- `--model <NAME>`: 使用するモデル（既定: `gemini-2.5-flash` または `gemini-2.5-pro`）
+- `--model <NAME>`: 使用するモデル（既定: `gemini-3.8-flash`。2.5-flash は 404）
 - `--max-steps <N>`: 最大実行ステップ数（既定: 20）
 - `--dry-run`: 操作を行わず、ウィンドウ捕捉とキャプチャのみ確認
 - `--report <PATH>`: 結果マトリクス出力先（既定: `work/UI_OPERATION_MATRIX.md`）
@@ -72,3 +72,40 @@ python .agents/skills/gamerseye/run.py --title "TuskFolio" -fullview --duration 
 - `--duration <SEC>`: 連射秒数（既定: 1.5秒）
 - `--save-anim <PATH>`: 任意で Animated WebP / GIF として保存（省略時はRAMバッファのみ）
 
+---
+
+## GUI 試験を Antigravity (`agy`) へ受け渡す (`--handoff`)
+15FPS 連射や自律操作を Claude に見せるとトークンが重い。操作・撮影は Gemini Flash(agy)に任せ、Claude は返ったキャプチャ1〜2枚で最終判定だけする。
+
+**役割分担**
+- Gemini/Antigravity = 操作・連射・動きの確認・項目ごとの一次判定。
+- Claude = 返った JSON の `evidence` の PNG を1〜2枚だけ開いて最終の合否。Gemini の要約は捏造があり得る。必ずキャプチャで裏取りする。
+- 根拠PNGが実在しない項目・根拠無しの pass は、ハーネスが自動で unknown に落として `anomalies` に書く。
+
+**使い方**
+```powershell
+python .agents/skills/gamerseye/run.py --handoff spec.json
+```
+spec.json:
+```json
+{"target": {"exe": "C:/.../act3_view.exe"},
+ "place": "40,40,1200,800",
+ "document": "任意: 開く文書のパス",
+ "items": [{"id": "menu_open", "check": "ファイルメニューを開くと一覧が出る"}],
+ "out_dir": "キャプチャ保存先(PNG)", "timeout": 300}
+```
+- `target`: `exe`(ハーネスが起動して配置) / `pid` / `title`(起動済みの窓)のどれか。
+- 呼び出し: `agy -p … --model gemini-3.8-flash-medium --output-format json --json-schema … --sandbox --add-dir … --print-timeout <秒>s`。`--dangerously-skip-permissions` は使わない。
+- モデルは Flash のみ(`gemini-3.8-flash-{low,medium,high}`。spec の `model` か環境変数 `GAMERSEYE_AGY_MODEL`)。他は拒否。
+- 返り(標準出力と `out_dir/handoff_result.json`): `items[{id,result(pass|fail|unknown),evidence[],note}]`、`steps`、`captures`、`anomalies`。生出力は `out_dir/agy_raw.txt`。
+
+**agy が使う道具(同じ run.py)**
+`--shot out.png`(1枚撮る。Claude が最終判定で見る用にも使う) / `--burst DIR [--duration 1.5 --fps 15]`(連射をPNG保存) / `--place X,Y,W,H` / `--click X,Y` / `--key 名前` / `--type 文字列` / `--close-window` / `--launch EXE [--open DOC]`。窓は `--pid` か `--title` で捕捉。
+
+**決まり**
+- 保存は写し(複製)にだけ。正本は別。
+- 窓の位置とサイズを先に決める(起動直後 1280x960 は下端がタスクバーに隠れる)。
+- 閉じるのは閉じるボタン相当(`--close-window`)。Alt+F4 は安全装置で止まる。agy が閉じ忘れたらハーネスが閉じる。
+- 試験文書のページ数制限は無し(所有者指示)。
+- アプリはハーネスが agy の外で起動する(agy の sandbox 内で起動すると命令の終了で落ちる)。agy の exebox デスクトップは対象窓の居る Default デスクトップへ付け替えて操作する(binder が自動で行う)。
+- 単体試験: `python -m unittest discover -s tests`(agy 呼び出しはモック)。

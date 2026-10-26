@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .actuator import WindowActuator
 from .binder import WindowBinder
@@ -204,7 +204,7 @@ class ComputerUseRunner:
         self,
         title_regex: Optional[str] = None,
         pid: Optional[int] = None,
-        model_name: str = "gemini-2.5-flash",
+        model_name: str = "gemini-3.8-flash",
     ):
         self.binder = WindowBinder(pid=pid, title_regex=title_regex)
         self.binder.find_and_bind()
@@ -516,8 +516,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=str,
-        default=os.environ.get("COMPUTER_USE_MODEL", "gemini-2.5-flash"),
-        help="Gemini multimodal model name (default: gemini-2.5-flash)",
+        default=os.environ.get("COMPUTER_USE_MODEL", "gemini-3.8-flash"),
+        help="Gemini multimodal model name (default: gemini-3.8-flash)",
     )
     parser.add_argument(
         "--report",
