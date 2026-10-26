@@ -1,0 +1,25 @@
+{
+  "project_root": ".",
+  "backend": "vertex",
+  "model": "gemini-4-argon",
+  "location": "us-central1",
+  " base_url_comment": "For local-llm backend, set backend='local-llm', model='gemma4:26b', base_url='http://localhost:11434/v1'",
+  "base_url": "http://localhost:11434/v1",
+  "verify_cmd": "cargo test",
+  "temperature": 0.1,
+  "tasks": [
+    {
+      "id": "task_1_preserve_cell_padding_valign",
+      "title": "Preserve Inferred Cell padding_pt and valign in elastic.rs",
+      "requirement": "Modify the loop in synchronize_table_rows_and_pushdown so cell.padding_pt is only populated via get_or_insert([2.5, 3.0, 2.5, 2.2]), and preserve existing cell.valign without unconditionally overwriting it to Top.",
+      "slices": [
+        {
+          "file": "crates/act4_core/src/elastic.rs",
+          "start_line": 2015,
+          "end_line": 2040,
+          "lang": "rust"
+        }
+      ]
+    }
+  ]
+}

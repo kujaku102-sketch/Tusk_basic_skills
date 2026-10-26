@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Antigravity UI Kit - Component Showcase</title>
+  <link rel="stylesheet" href="agy-ui.css">
+</head>
+<body>
+  <div class="agy-layout">
+
+    <!-- 1. Header Component -->
+    <header class="agy-header">
+      <div class="agy-brand">
+        <div class="agy-logo-glow">🦣</div>
+        <div>
+          <h1 class="agy-title">Antigravity UI Kit</h1>
+          <span class="agy-subtitle">Modern Dark Component Library & Design System</span>
+        </div>
+      </div>
+      <div class="agy-header-actions">
+        <div class="agy-badge agy-badge-success">
+          <span class="agy-dot pulse"></span> LIVE ENGINE
+        </div>
+        <button class="agy-btn agy-btn-secondary" id="btn-open-modal">✨ モーダル表示</button>
+      </div>
+    </header>
+
+    <!-- 2. Metrics & Stat Cards -->
+    <section class="agy-grid-4">
+      <div class="agy-card">
+        <span class="agy-card-label">Core 整合性</span>
+        <div class="agy-card-value text-emerald">100<span class="unit">% Clean</span></div>
+      </div>
+      <div class="agy-card">
+        <span class="agy-card-label">有効化 Extension</span>
+        <div class="agy-card-value text-blue">4 <span class="unit">/ 6 件</span></div>
+      </div>
+      <div class="agy-card">
+        <span class="agy-card-label">Focus Cache 地雷数</span>
+        <div class="agy-card-value text-emerald">0 <span class="unit">件</span></div>
+      </div>
+      <div class="agy-card">
+        <span class="agy-card-label">ビルドバイナリ</span>
+        <div class="agy-card-value text-amber">8.2 <span class="unit">MB</span></div>
+      </div>
+    </section>
+
+    <!-- 3. Two Column Layout: Table & Forms -->
+    <div class="agy-grid-2">
+
+      <!-- Table Component -->
+      <section class="agy-card">
+        <div class="agy-card-header">
+          <h3>📦 拡張機能テーブル (Data Table)</h3>
+          <span class="agy-badge agy-badge-loading">4 件検出</span>
+        </div>
+        <div class="agy-table-container">
+          <table class="agy-table">
+            <thead>
+              <tr>
+                <th>Extension</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="code-font">Tusk_DTP</td>
+                <td><span class="agy-badge agy-badge-success">有効</span></td>
+                <td><button class="agy-btn agy-btn-secondary agy-btn-xs">無効化</button></td>
+              </tr>
+              <tr>
+                <td class="code-font">Tusk_Tauri</td>
+                <td><span class="agy-badge agy-badge-success">有効</span></td>
+                <td><button class="agy-btn agy-btn-secondary agy-btn-xs">無効化</button></td>
+              </tr>
+              <tr>
+                <td class="code-font">Tusk_SZ</td>
+                <td><span class="agy-badge agy-badge-loading">無効</span></td>
+                <td><button class="agy-btn agy-btn-primary agy-btn-xs">有効化</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Form Component & Buttons -->
+      <section class="agy-card">
+        <div class="agy-card-header">
+          <h3>🎛️ 入力フォーム & ボタングループ</h3>
+        </div>
+        <div class="agy-form-group">
+          <label class="agy-label">リポジトリ URL</label>
+          <input type="text" class="agy-input code-font" value="https://github.com/kujaku102-sketch/Tusk_core.git">
+        </div>
+        <div class="agy-form-group">
+          <label class="agy-label">ブランチ名</label>
+          <input type="text" class="agy-input code-font" value="main">
+        </div>
+        <div style="display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap;">
+          <button class="agy-btn agy-btn-primary">プライマリ実行</button>
+          <button class="agy-btn agy-btn-secondary">セカンダリ</button>
+          <button class="agy-btn agy-btn-danger">危険操作</button>
+          <button class="agy-btn agy-btn-ghost">ゴースト</button>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- 4. Console Log Panel -->
+    <section class="agy-card">
+      <div class="agy-card-header">
+        <h3>🖥️ リアルタイム操作ログ (Console Output)</h3>
+        <button class="agy-btn agy-btn-xs agy-btn-secondary" onclick="clearLog()">クリア</button>
+      </div>
+      <div id="console-output" class="agy-console-body">
+        <div class="agy-log system">[SYSTEM] Antigravity UI Kit Engine v1.0.0 is ready.</div>
+        <div class="agy-log info">[INFO] Workspace loaded at D:\workspace\Tusk_architecture</div>
+        <div class="agy-log success">[SUCCESS] All 12/12 unit tests passed.</div>
+        <div class="agy-log warning">[WARNING] 1 extension is currently disabled (Tusk_SZ).</div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Modal Dialog -->
+  <div id="demo-modal" class="agy-modal-overlay hidden">
+    <div class="agy-modal-box">
+      <div class="agy-modal-header">
+        <h3>✨ Glassmorphic Modal Dialog</h3>
+        <button class="agy-modal-close" id="btn-close-modal">&times;</button>
+      </div>
+      <div class="agy-modal-body">
+        <p style="color: var(--agy-text-secondary); margin-bottom: 12px;">
+          Antigravity スタイルの背景ブラー付きモーダルダイアログです。
+        </p>
+        <div class="agy-form-group">
+          <label class="agy-label">設定パラメータ</label>
+          <input type="text" class="agy-input" placeholder="値を入力">
+        </div>
+      </div>
+      <div class="agy-modal-footer">
+        <button class="agy-btn agy-btn-secondary" id="btn-cancel-modal">キャンセル</button>
+        <button class="agy-btn agy-btn-primary" id="btn-ok-modal">保存して適用</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const modal = document.getElementById('demo-modal');
+    document.getElementById('btn-open-modal').onclick = () => modal.classList.remove('hidden');
+    document.getElementById('btn-close-modal').onclick = () => modal.classList.add('hidden');
+    document.getElementById('btn-cancel-modal').onclick = () => modal.classList.add('hidden');
+    document.getElementById('btn-ok-modal').onclick = () => {
+      alert('保存しました！');
+      modal.classList.add('hidden');
+    };
+
+    function clearLog() {
+      document.getElementById('console-output').innerHTML = '';
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "root": "Tusk_Basic_skills",
+  "version": "1.3.0",
+  "algorithm": "sha256",
+  "managed_files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "a59fd13d157132b3221ec051028c155af8865f60421d2a2da52926fc1d0c9658"
+    },
+    {
+      "path": "focus_cache/LANDMINES.md",
+      "sha256": "52e0f347395f7141757df893faa64841cd06b77146d4c5c69b33e5513722ca59"
+    },
+    {
+      "path": "skills/antigravity-ui-kit/SKILL.md",
+      "sha256": "c0993289e80a2affcdd03e8fced6b1d8c2e6e42339a87b3a95dbead90df2e8b8"
+    },
+    {
+      "path": "skills/antigravity-ui-kit/resources/agy-ui.css",
+      "sha256": "841ec2423db911846c84d1ec06be0510334e4fa16a5e0da3b4a627e7954e87b6"
+    },
+    {
+      "path": "skills/antigravity-ui-kit/resources/showcase.html",
+      "sha256": "84d478dfa30de2b55a25d3fde4b2c3c9d2fb4c34c4dcd6f4d828e51dbde9f798"
+    },
+    {
+      "path": "skills/fiumller-vision/SKILL.md",
+      "sha256": "fa24061cd04c3240b50a3ef3813112ed44463ff02c325e493b32f4277503b804"
+    },
+    {
+      "path": "skills/fiumller-vision/references/GEOMETRY_RULES.md",
+      "sha256": "7a18a20c29f93e529f23f03e06a6d4270538d7c1a6f563035bc40b830778c01b"
+    },
+    {
+      "path": "skills/fiumller-vision/scripts/compare_pages.py",
+      "sha256": "8fee5acf9d4748a5c0c71ec824c8a23a8dcf22188a78f46c0311483c27240eb1"
+    },
+    {
+      "path": "skills/fiumller-vision/scripts/detect_anomalies.py",
+      "sha256": "a8bdedf65232204c959dda15f06697013e52ac7768ea3768d09971ef7b72dfc5"
+    },
+    {
+      "path": "skills/fiumller-vision/scripts/fvision_runner.py",
+      "sha256": "737b933529d79deff9d7f63b0b8cf2e1179256cd1933b79344bdf583c4b05496"
+    },
+    {
+      "path": "skills/fiumller-vision/scripts/inactive_desktop.py",
+      "sha256": "d6c3cf33d6eccc079a78cf65f456a0820dcf3b632d22c220168dc4483c22bff2"
+    },
+    {
+      "path": "skills/fiumller-vision/scripts/inspect_geometry.py",
+      "sha256": "55724d5df42615d1d7b491c996c612e0a4970b3506353a8f70bebd1f899279b7"
+    },
+    {
+      "path": "skills/fiumller-vision/scripts/render_inspect.py",
+      "sha256": "f651445b071275655e6b6e831c7e301cad8cddb8d3b8409e302c44cc2fcf16f0"
+    },
+    {
+      "path": "skills/fiumller-vision/scripts/udr_source.py",
+      "sha256": "b9610563bd2a47c6499f93f19872d3cdd38efd3333e5e2bdbb2c0d02189b4599"
+    },
+    {
+      "path": "skills/fiumller-vision/tests/test_vision.py",
+      "sha256": "ef2fd8f3416169d1ceeb382c0bf0145075f5e8e248706407ae41a3614e422e0c"
+    },
+    {
+      "path": "skills/gamerseye/SKILL.md",
+      "sha256": "135789a7e2a50950d68ad26777287eb8bacd8b6055243c70a45ebf4757f55ca2"
+    },
+    {
+      "path": "skills/gamerseye/gamerseye_core/__init__.py",
+      "sha256": "e1c1781975fe5b8763df1f8f9294bdf477fa2da1ad6d7e1d383ddfdc73ddb3c3"
+    },
+    {
+      "path": "skills/gamerseye/gamerseye_core/actuator.py",
+      "sha256": "ac85e34db84b294686dc0929a2cefc75a02efafea50a2e7f8133c7d92640ff45"
+    },
+    {
+      "path": "skills/gamerseye/gamerseye_core/binder.py",
+      "sha256": "40d725bd5f3101be386f60d61857e9e815c964065f318bb460c2601bec4f5c6d"
+    },
+    {
+      "path": "skills/gamerseye/gamerseye_core/runner.py",
+      "sha256": "a8c294d7dddece965556eeae7550d769965370866660f44e565ad88a7e4b0b33"
+    },
+    {
+      "path": "skills/gamerseye/gamerseye_core/vision.py",
+      "sha256": "b7a0674be1979b04ddebee6c82d0e3b0e641c1513ad1009c91239377bffecb7c"
+    },
+    {
+      "path": "skills/gamerseye/requirements.txt",
+      "sha256": "bcfcac0f4a568e29d0ec8ef4252a965e2f35dcc0af05a4ffe85cac1c0316a775"
+    },
+    {
+      "path": "skills/gamerseye/run.py",
+      "sha256": "aaef94d7463a58b1545fff743b256643fed526bbb63de37c082ff53475731d1d"
+    },
+    {
+      "path": "skills/inq/SKILL.md",
+      "sha256": "4158716bab477fd6302b19b658b543ac20dee439fb90a9686107cbbb2366b53a"
+    },
+    {
+      "path": "skills/inq/scripts/inq_harvester.py",
+      "sha256": "7c3b9e20b40ac6f6e70aa272e7e9396da71fcb12cc4771f37e8f80a87c3b885d"
+    },
+    {
+      "path": "skills/ship/SKILL.md",
+      "sha256": "19b3acc4646fb6e336e486c085718ab91ac735d89f6456342aea10fc5146dfaa"
+    },
+    {
+      "path": "skills/ship/scripts/ship_inspector.py",
+      "sha256": "b79b63521f21a6ba15f67872d560fb13db51a0912bd999f0d42ec98bc551fdb5"
+    },
+    {
+      "path": "skills/tusk-manager/SKILL.md",
+      "sha256": "d122e0e7a16d3830b4e1d0c1f43ad608f2e2aa75a42e58b2ceaeae0c05d69033"
+    },
+    {
+      "path": "skills/tusk-manager/scripts/tusk_manager.py",
+      "sha256": "99fc2bd8bf25911c9554e6debfc0f6e90985e30dd70023eceba800edb1e07ebe"
+    },
+    {
+      "path": "skills/tusk-manager/tests/test_session_multi.py",
+      "sha256": "32d07e86783e21bdadf3ec9ce919b8eed914394bc375b816315d7db55fea3ea3"
+    },
+    {
+      "path": "skills/tusk-manager/tests/test_tusk_manager.py",
+      "sha256": "a561f164810cbba074cde68d9f3f2e6a6af76c34341b7070fcf84ac230564cf2"
+    },
+    {
+      "path": "skills/tuskbatch/SKILL.md",
+      "sha256": "37226fd71b4733d83588bfa60d74569cce39bdf59731209be2d2209001e90019"
+    },
+    {
+      "path": "skills/tuskbatch/resources/example_tasks.json",
+      "sha256": "4de4320c62d367dd5f8d211a59bf28ae39a04eb3ceb4b8bb47736b348fbd53fb"
+    },
+    {
+      "path": "skills/tuskbatch/scripts/gce_forge_setup.sh",
+      "sha256": "d330c892dd58aecd46d8bd322fded47a3b11f02706cdc9d9de3cc32dc4f4bc00"
+    },
+    {
+      "path": "skills/tuskbatch/scripts/tusk_batch_runner.py",
+      "sha256": "d495ffc49249d72bdf689ed6939e71a6469c55c21981f375ac018de7ee3f59b6"
+    },
+    {
+      "path": "skills/tuskfact/SKILL.md",
+      "sha256": "717f434dc23dd1fa10b0e0e90d50b4098c814ac331025ade26be608a0ef286a9"
+    },
+    {
+      "path": "skills/tuskfact/scripts/tuskfact_scan.py",
+      "sha256": "0c0c1e7ef5ebb53ffd2ede0f026a7c774d00e9f482405abd4a7bacb0048c3dd9"
+    }
+  ]
+}
