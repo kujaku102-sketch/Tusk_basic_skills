@@ -26,11 +26,16 @@ _DEFAULT_DESK_HANDLE = None
 
 def _attach_interactive_desktop() -> None:
     """
-    Ensure the current thread is attached to the interactive 'WinSta0\\Default' desktop.
-    Keeps handles globally alive to prevent destructor closing them.
+    Ensure the current thread is attached to an interactive desktop.
+    agy の exebox デスクトップは対象窓が居ない別デスクトップなので、Default へ付け替える。
     """
     global _WINSTA0_HANDLE, _DEFAULT_DESK_HANDLE
     try:
+        tid = win32api.GetCurrentThreadId()
+        cur_desk = win32service.GetThreadDesktop(tid)
+        cur_desk_name = win32service.GetUserObjectInformation(cur_desk, 2)
+        if cur_desk_name and cur_desk_name != "Default" and not str(cur_desk_name).startswith("exebox"):
+            return
         _WINSTA0_HANDLE = win32service.OpenWindowStation("WinSta0", False, 0xF037F)
         _WINSTA0_HANDLE.SetProcessWindowStation()
         _DEFAULT_DESK_HANDLE = win32service.OpenDesktop("Default", 0, False, 0x01FF)

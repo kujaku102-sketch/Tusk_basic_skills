@@ -40,6 +40,9 @@ def _check_dependencies():
 
 def main():
     _check_dependencies()
+    from gamerseye_core import handoff
+    if handoff.is_handoff_invocation(sys.argv[1:]):
+        sys.exit(handoff.main(sys.argv[1:]))
     from gamerseye_core.runner import main as runner_main
     runner_main()
 
