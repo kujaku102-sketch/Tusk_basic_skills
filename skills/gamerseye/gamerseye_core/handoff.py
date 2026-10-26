@@ -76,6 +76,8 @@ def build_prompt(spec: Dict[str, Any], run_py: Path, out_dir: Path) -> str:
     lines.append("- 窓は必ず上の --pid で捕まえる。--title は使わない(他の窓を掴まないため)。")
     lines.append(f"- キャプチャは PNG で {_rel(out_dir)} の下にだけ保存する。他の場所に書かない。")
     lines.append("- run.py のソースを読まない・書き換えない・別スクリプトを作らない。上の道具のコマンドだけ使う。各コマンドは数秒で終わる。")
+    lines.append("- トークンを節約する: 撮影は項目ごとに必要最小限(1項目あたり原則1〜2枚)。確認済みの画面を撮り直さない。連射は動きの確認が要る項目だけ。")
+    lines.append("- 時間上限が近づいたら操作を止め、今わかっている結果で返す(未確認は unknown)。")
     lines.append("- 操作の前後に --shot を撮り、画像ファイルを開いて確かめてから次へ進む。")
     lines.append("- 判定は撮った画像を自分で見て行う。見えなければ unknown。推測で pass にしない。evidence には実在するPNGのパスだけ書く。")
     if place:
@@ -85,7 +87,7 @@ def build_prompt(spec: Dict[str, Any], run_py: Path, out_dir: Path) -> str:
     lines.append("確かめる項目:")
     for it in spec["items"]:
         lines.append(f"- [{it['id']}] {it['check']}")
-    lines.append(f"時間上限: {spec.get('timeout', 300)} 秒")
+    lines.append(f"時間上限: {spec.get('timeout') or default_timeout(len(spec['items']))} 秒")
     lines.append("返すJSON: items[{id,result(pass|fail|unknown),evidence[PNGパス],note}], steps[実行した手順], captures[保存した全PNGパス], anomalies[異常・想定外]。")
     return "\n".join(lines)
 
@@ -160,47 +162,148 @@ def validate_result(res: Dict[str, Any], spec: Dict[str, Any], out_dir: Path) ->
     return res
 
 
+DEFAULT_CHUNK = 6  # 1回の受け渡しで見る項目数の上限(超えたら分割)
+
+
+def default_timeout(n_items: int) -> int:
+    """項目数に応じた時間上限(秒)。1項目あたり約150秒、最低300秒。"""
+    return max(300, 150 * n_items)
+
+
+def _pid_alive(pid: int) -> bool:
+    h = ctypes.windll.kernel32.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE
+    if not h:
+        return False
+    try:
+        return ctypes.windll.kernel32.WaitForSingleObject(h, 0) == 0x102  # WAIT_TIMEOUT = まだ生きてる
+    finally:
+        ctypes.windll.kernel32.CloseHandle(h)
+
+
+def _kill_pid(pid: int) -> None:
+    subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True)
+
+
+def finish_started(pid: int, wait: float = 5.0, alive=_pid_alive, kill=_kill_pid, close=None) -> List[str]:
+    """handoff 自身が起動した PID だけを片付ける。WM_CLOSE 後 wait 秒待ち、残れば強制終了。"""
+    notes: List[str] = []
+    if not alive(pid):
+        return notes
+    if (close or close_if_alive)(pid):
+        notes.append("agy が閉じ忘れたので窓を閉じた")
+    end = time.time() + wait
+    while time.time() < end and alive(pid):
+        time.sleep(0.3)
+    if alive(pid):
+        kill(pid)
+        notes.append(f"WM_CLOSE 後も PID {pid} が残ったので強制終了した(エラー小窓/未保存確認の疑い)")
+    return notes
+
+
+def _agy_cmd(spec, model, prompt, out_dir, run_py, timeout, conversation=None):
+    cmd = [spec.get("agy") or os.environ.get("AGY_BIN", DEFAULT_AGY)]
+    if conversation:
+        cmd += ["--conversation", conversation]
+    cmd += ["-p", prompt, "--model", model, "--output-format", "json", "--json-schema", json.dumps(RESULT_SCHEMA),
+            "--sandbox", "--add-dir", str(out_dir), "--add-dir", str(run_py.parent), "--print-timeout", f"{timeout}s"]
+    return cmd
+
+
+def _conversation_id(stdout: str) -> Optional[str]:
+    try:
+        return json.loads(stdout).get("conversation_id")
+    except (ValueError, AttributeError):
+        m = re.search(r'"conversation_id"\s*:\s*"([^"]+)"', stdout or "")
+        return m.group(1) if m else None
+
+
+RECOVER_PROMPT = "時間切れだ。これ以上操作せず、今わかっている結果をschemaどおりJSONだけで返せ。確かめていない項目は unknown。"
+RECOVER_TIMEOUT = 90
+
+
+def _run_once(spec: Dict[str, Any], model: str, out_dir: Path, runner) -> Dict[str, Any]:
+    run_py = Path(__file__).resolve().parent.parent / "run.py"
+    timeout = int(spec.get("timeout") or default_timeout(len(spec["items"])))
+    target = spec["target"]
+    started = None
+    if target.get("exe") and not target.get("pid"):
+        started = launch_and_place(target["exe"], spec.get("document"), spec.get("place", "40,40,1200,800"))
+        spec = dict(spec, target=dict(target, pid=started["pid"]))
+    cmd = _agy_cmd(spec, model, build_prompt(dict(spec, timeout=timeout), run_py, out_dir), out_dir, run_py, timeout)
+    notes: List[str] = []
+    timed_out = False
+    recovered = False
+    res: Optional[Dict[str, Any]] = None
+    raw = ""
+    try:
+        proc = runner(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout + 60)
+        raw = (proc.stdout or "") + "\n--stderr--\n" + (proc.stderr or "")
+        if proc.returncode != 0:
+            raise RuntimeError(f"agy が失敗 rc={proc.returncode}: {(proc.stderr or '')[:500]}")
+        timed_out = "print timeout" in (proc.stderr or "")
+        try:
+            res = extract_json(proc.stdout)
+        except ValueError:
+            if not timed_out:
+                raise
+        if timed_out:
+            notes.append(f"agy が時間上限 {timeout}s で打ち切られた(print timeout)")
+            if res is None:
+                cid = _conversation_id(proc.stdout)
+                if cid:
+                    try:
+                        p2 = runner(_agy_cmd(spec, model, RECOVER_PROMPT, out_dir, run_py, RECOVER_TIMEOUT, conversation=cid),
+                                    capture_output=True, text=True, encoding="utf-8", timeout=RECOVER_TIMEOUT + 30)
+                        raw += "\n--recover--\n" + (p2.stdout or "") + "\n--stderr--\n" + (p2.stderr or "")
+                        res = extract_json(p2.stdout)
+                        recovered = True
+                        notes.append("時間切れ後に conversation で結果を回収した")
+                    except Exception as e:  # 回収失敗: 全項目 unknown
+                        notes.append(f"結果の回収に失敗: {e}")
+                else:
+                    notes.append("conversation_id が無く回収できなかった")
+    finally:
+        (out_dir / "agy_raw.txt").write_text(raw, encoding="utf-8")
+        if started:
+            notes += finish_started(started["pid"])
+    if res is None:
+        res = {"items": [], "steps": [], "captures": [], "anomalies": []}
+    res = validate_result(res, spec, out_dir)
+    res["anomalies"] += notes
+    res["timed_out"] = timed_out
+    res["recovered"] = recovered
+    return res
+
+
 def run_handoff(spec_path: str, runner=subprocess.run) -> Dict[str, Any]:
     spec = json.loads(Path(spec_path).read_text(encoding="utf-8"))
     model = check_model(spec.get("model") or os.environ.get("GAMERSEYE_AGY_MODEL", DEFAULT_MODEL))
     if not spec.get("items") or not spec.get("target"):
         raise ValueError("spec には target と items が要る")
-    out_dir = Path(spec.get("out_dir") or (Path(spec_path).resolve().parent / "handoff_out"))
-    out_dir.mkdir(parents=True, exist_ok=True)
-    run_py = Path(__file__).resolve().parent.parent / "run.py"
-    timeout = int(spec.get("timeout", 300))
     target = spec["target"]
     if not target.get("pid") and not target.get("exe"):
         raise ValueError("target には pid か exe が要る (タイトルだけでは捕まえない)")
-    started = None
-    if target.get("exe") and not target.get("pid"):
-        started = launch_and_place(target["exe"], spec.get("document"), spec.get("place", "40,40,1200,800"))
-        target = dict(target, pid=started["pid"])
-        spec = dict(spec, target=target)
-    cmd = [
-        spec.get("agy") or os.environ.get("AGY_BIN", DEFAULT_AGY),
-        "-p", build_prompt(spec, run_py, out_dir),
-        "--model", model,
-        "--output-format", "json",
-        "--json-schema", json.dumps(RESULT_SCHEMA),
-        "--sandbox",
-        "--add-dir", str(out_dir),
-        "--add-dir", str(run_py.parent),
-        "--print-timeout", f"{timeout}s",
-    ]
-    try:
-        proc = runner(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout + 60)
-    finally:
-        left_open = bool(started) and close_if_alive(started["pid"])
-    (out_dir / "agy_raw.txt").write_text((proc.stdout or "") + "\n--stderr--\n" + (proc.stderr or ""), encoding="utf-8")
-    if proc.returncode != 0:
-        raise RuntimeError(f"agy が失敗 rc={proc.returncode}: {(proc.stderr or '')[:500]}")
-    res = validate_result(extract_json(proc.stdout), spec, out_dir)
-    res["model"] = model
-    if left_open:
-        res["anomalies"].append("agy が閉じ忘れたので窓を閉じた")
-    (out_dir / "handoff_result.json").write_text(json.dumps(res, ensure_ascii=False, indent=2), encoding="utf-8")
-    return res
+    out_dir = Path(spec.get("out_dir") or (Path(spec_path).resolve().parent / "handoff_out"))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    chunk = int(spec.get("chunk", DEFAULT_CHUNK))
+    items = spec["items"]
+    parts = [items[i:i + chunk] for i in range(0, len(items), chunk)]
+    if len(parts) > 1 and not target.get("exe"):
+        raise ValueError("項目が多く分割が要るが、pid 指定では毎回起動し直せない。chunk を増やすか exe 指定にする")
+    merged: Dict[str, Any] = {"items": [], "steps": [], "captures": [], "anomalies": [], "timed_out": False, "recovered": False}
+    if len(parts) > 1:
+        merged["anomalies"].append(f"項目{len(items)}件を{len(parts)}回に分けて実行した(chunk={chunk})")
+    for n, part in enumerate(parts, 1):
+        d = out_dir if len(parts) == 1 else out_dir / f"part{n}"
+        d.mkdir(parents=True, exist_ok=True)
+        r = _run_once(dict(spec, items=part), model, d, runner)
+        for k in ("items", "steps", "captures", "anomalies"):
+            merged[k] += r[k]
+        merged["timed_out"] |= r["timed_out"]
+        merged["recovered"] |= r["recovered"]
+    merged["model"] = model
+    (out_dir / "handoff_result.json").write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
+    return merged
 
 
 # ---- 単発の道具 ----------------------------------------------------------

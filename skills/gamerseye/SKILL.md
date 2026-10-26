@@ -109,3 +109,6 @@ spec.json:
 - 試験文書のページ数制限は無し(所有者指示)。
 - アプリはハーネスが agy の外で起動する(agy の sandbox 内で起動すると命令の終了で落ちる)。agy の exebox デスクトップは対象窓の居る Default デスクトップへ付け替えて操作する(binder が自動で行う)。
 - 単体試験: `python -m unittest discover -s tests`(agy 呼び出しはモック)。
+- **時間切れ**: agy は `--print-timeout` 切れでも status=SUCCESS・response 空で返す。stderr の "print timeout" を検出して `timed_out: true` と anomalies に記録し、conversation_id で1回だけ回収(90秒)する。取れなければ全項目 unknown(`recovered` で区別)。
+- **時間上限と分割**: `timeout` 省略時は項目数×150秒(最低300秒)。項目が `chunk`(既定6)を超えると複数回に分けて実行(`exe` 指定のみ。毎回起動し直す。キャプチャは `out_dir/partN/`)。プロンプトで撮影は項目あたり1〜2枚に絞らせる(トークン節約。1回18〜28万トークンかかる)。
+- **終了処理**: WM_CLOSE 後 5秒待ち、handoff 自身が起動した PID が残っていればその PID だけ強制終了(エラー小窓・未保存確認対策)。`pid` 指定で渡された他人の窓は触らない。

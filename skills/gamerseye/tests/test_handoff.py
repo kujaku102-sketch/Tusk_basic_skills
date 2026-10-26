@@ -78,6 +78,58 @@ class T(unittest.TestCase):
     def test_close_window_needs_pid(self):
         self.assertEqual(h.tool_cli(["--title", "TuskFolio", "--close-window"]), 2)
 
+    def _timeout_runner(self, recover_payload):
+        calls = []
+        def run(cmd, **kw):
+            calls.append(cmd)
+            if "--conversation" in cmd:
+                return subprocess.CompletedProcess(cmd, 0, stdout=recover_payload, stderr="")
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout=json.dumps({"conversation_id": "cid1", "status": "SUCCESS", "response": ""}),
+                stderr="[agy] print timeout after 5s with turn in progress; returning partial output")
+        return run, calls
+
+    def test_timeout_then_recover(self):
+        body = {"items": [{"id": "A", "result": "pass", "evidence": [str(self.png)], "note": ""}],
+                "steps": ["s"], "captures": [], "anomalies": []}
+        run, calls = self._timeout_runner(json.dumps({"response": json.dumps(body)}))
+        r = h.run_handoff(str(self.sp), runner=run)
+        self.assertTrue(r["timed_out"])
+        self.assertTrue(r["recovered"])
+        self.assertEqual(calls[1][calls[1].index("--conversation") + 1], "cid1")
+        self.assertEqual([i["result"] for i in r["items"]], ["pass", "unknown"])
+        self.assertTrue(any("print timeout" in a for a in r["anomalies"]))
+
+    def test_timeout_recover_fails(self):
+        run, _ = self._timeout_runner("not json")
+        r = h.run_handoff(str(self.sp), runner=run)
+        self.assertTrue(r["timed_out"])
+        self.assertFalse(r["recovered"])
+        self.assertEqual([i["result"] for i in r["items"]], ["unknown", "unknown"])
+        self.assertTrue(any("回収に失敗" in a for a in r["anomalies"]))
+
+    def test_force_kill_only_started_pid(self):
+        killed = []
+        state = {"alive": True}
+        notes = h.finish_started(77, wait=0.3, alive=lambda p: state["alive"], kill=lambda p: killed.append(p),
+                                 close=lambda p: True)
+        self.assertEqual(killed, [77])
+        self.assertTrue(any("強制終了" in n for n in notes))
+        # WM_CLOSE で消えたら kill しない
+        killed.clear()
+        seq = iter([True, True, False, False])
+        notes = h.finish_started(78, wait=1, alive=lambda p: next(seq, False), kill=lambda p: killed.append(p),
+                                 close=lambda p: True)
+        self.assertEqual(killed, [])
+
+    def test_timeout_scales_and_chunking(self):
+        self.assertEqual(h.default_timeout(1), 300)
+        self.assertEqual(h.default_timeout(10), 1500)
+        spec = dict(self.spec, target={"pid": 1}, items=[{"id": str(i), "check": "c"} for i in range(8)])
+        self.sp.write_text(json.dumps(spec), encoding="utf-8")
+        with self.assertRaises(ValueError):  # pid 指定は分割できない
+            h.run_handoff(str(self.sp), runner=self.fake("{}")[0])
+
     def test_prompt_rules(self):
         p = h.build_prompt(self.spec, Path("run.py"), self.d)
         for s in ("--place", "Alt+F4", "--close-window", "タスクバー", "[A]"):
