@@ -130,6 +130,27 @@ class T(unittest.TestCase):
         with self.assertRaises(ValueError):  # pid 指定は分割できない
             h.run_handoff(str(self.sp), runner=self.fake("{}")[0])
 
+    def test_subprocess_timeout_still_outputs_json(self):
+        def run(cmd, **kw):
+            raise subprocess.TimeoutExpired(cmd, 1, output=b"", stderr=None)
+        r = h.run_handoff(str(self.sp), runner=run)
+        self.assertTrue(r["timed_out"])
+        self.assertFalse(r["recovered"])
+        self.assertEqual([i["result"] for i in r["items"]], ["unknown", "unknown"])
+        self.assertTrue(any("subprocess" in a for a in r["anomalies"]))
+        self.assertTrue((self.d / "o" / "handoff_result.json").is_file())
+
+    def test_subprocess_timeout_recovers_with_conversation(self):
+        body = {"items": [{"id": "A", "result": "pass", "evidence": [str(self.png)], "note": ""}],
+                "steps": [], "captures": [], "anomalies": []}
+        def run(cmd, **kw):
+            if "--conversation" in cmd:
+                return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps(body), stderr="")
+            raise subprocess.TimeoutExpired(cmd, 1, output='{"conversation_id":"c9"}')
+        r = h.run_handoff(str(self.sp), runner=run)
+        self.assertTrue(r["recovered"])
+        self.assertEqual([i["result"] for i in r["items"]], ["pass", "unknown"])
+
     def test_prompt_rules(self):
         p = h.build_prompt(self.spec, Path("run.py"), self.d)
         for s in ("--place", "Alt+F4", "--close-window", "タスクバー", "[A]"):

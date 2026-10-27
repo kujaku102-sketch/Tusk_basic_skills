@@ -236,7 +236,14 @@ def _run_once(spec: Dict[str, Any], model: str, out_dir: Path, runner) -> Dict[s
     res: Optional[Dict[str, Any]] = None
     raw = ""
     try:
-        proc = runner(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout + 60)
+        try:
+            proc = runner(cmd, capture_output=True, text=True, encoding="utf-8", timeout=timeout + 120)
+        except subprocess.TimeoutExpired as e:
+            # agy が --print-timeout を過ぎても戻らなかった。subprocess が agy を止めた後の部分出力で続行する
+            def _s(v):
+                return v.decode("utf-8", "replace") if isinstance(v, bytes) else (v or "")
+            proc = subprocess.CompletedProcess(cmd, 0, stdout=_s(e.stdout), stderr=_s(e.stderr) + "\nprint timeout (subprocess TimeoutExpired)")
+            notes.append(f"agy が {timeout + 120}s 戻らず subprocess 側で打ち切った")
         raw = (proc.stdout or "") + "\n--stderr--\n" + (proc.stderr or "")
         if proc.returncode != 0:
             raise RuntimeError(f"agy が失敗 rc={proc.returncode}: {(proc.stderr or '')[:500]}")
