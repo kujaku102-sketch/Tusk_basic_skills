@@ -58,6 +58,22 @@ EXECUTION STRATEGY:
 """
 
 
+BURST_FPS = 15
+BURST_FRAMES_TO_MODEL = 6  # 連射のうち、次の手でモデルに見せる枚数 (時間で等間隔に選ぶ)
+
+
+def sample_frames(frames: List[Any], n: int = BURST_FRAMES_TO_MODEL) -> List[Any]:
+    """連射の frames から、最初と最後を含む時間で等間隔な n 枚を選ぶ (順は保つ)。"""
+    if n <= 0 or not frames:
+        return []
+    if len(frames) <= n:
+        return list(frames)
+    if n == 1:
+        return [frames[-1]]
+    step = (len(frames) - 1) / (n - 1)
+    return [frames[round(i * step)] for i in range(n)]
+
+
 def _build_gemini_tool_declarations():
     """Build FunctionDeclarations for google-genai SDK."""
     from google.genai import types
@@ -178,6 +194,22 @@ def _build_gemini_tool_declarations():
                     ),
                 ),
                 types.FunctionDeclaration(
+                    name="burst_capture",
+                    description=(
+                        "Capture a 15FPS burst of the whole window in RAM (zero disk I/O) to check motion, "
+                        "animation, hover or drag feedback. The next turn receives up to "
+                        f"{BURST_FRAMES_TO_MODEL} evenly spaced frames in time order."
+                    ),
+                    parameters=types.Schema(
+                        type="OBJECT",
+                        properties={
+                            "seconds": types.Schema(type="NUMBER", description="Burst length in seconds (0.5 to 3.0)"),
+                            "reasoning": types.Schema(type="STRING", description="Which motion is being checked"),
+                        },
+                        required=["seconds", "reasoning"],
+                    ),
+                ),
+                types.FunctionDeclaration(
                     name="finish_task",
                     description="Call when the goal has been completed or all target UI elements have been verified.",
                     parameters=types.Schema(
@@ -204,7 +236,7 @@ class ComputerUseRunner:
         self,
         title_regex: Optional[str] = None,
         pid: Optional[int] = None,
-        model_name: str = "gemini-3.8-flash",
+        model_name: str = "gemini-3.5-flash-lite",
     ):
         self.binder = WindowBinder(pid=pid, title_regex=title_regex)
         self.binder.find_and_bind()
@@ -213,6 +245,8 @@ class ComputerUseRunner:
         self.model_name = model_name
         self.history: List[StepRecord] = []
         self.final_summary: str = ""
+        self.pending_burst: List[Any] = []  # 次の手でモデルに見せる連射 (見せたら空にする)
+        self.burst_history: List[List[Any]] = []  # この回で撮った連射の全部 (根拠の保存用)
 
     def get_status(self) -> Dict[str, Any]:
         rect = self.binder.update_rect()
@@ -290,6 +324,13 @@ class ComputerUseRunner:
             elif name == "wait":
                 wait_sec = max(0.1, min(5.0, float(args.get("seconds", 1.0))))
                 time.sleep(wait_sec)
+
+            elif name == "burst_capture":
+                burst_sec = max(0.5, min(3.0, float(args.get("seconds", 1.5))))
+                frames = self.vision.capture_burst(duration=burst_sec, fps=BURST_FPS, mode="full")
+                self.pending_burst = frames
+                self.burst_history.append(frames)
+                args["frames"] = len(frames)
 
             elif name == "finish_task":
                 self.final_summary = str(args.get("summary", ""))
@@ -384,15 +425,16 @@ class ComputerUseRunner:
                 "Inspect the attached window capture and invoke the next tool call."
             )
 
-            contents = [
-                types.Content(
-                    role="user",
-                    parts=[
-                        types.Part.from_bytes(data=png_bytes, mime_type="image/png"),
-                        types.Part.from_text(text=prompt_text),
-                    ],
-                )
-            ]
+            parts = [types.Part.from_bytes(data=png_bytes, mime_type="image/png")]
+            if self.pending_burst:
+                shown = sample_frames(self.pending_burst)
+                parts.append(types.Part.from_text(
+                    text=f"BURST FRAMES ({BURST_FPS}FPS, {len(shown)} of {len(self.pending_burst)} frames, time order) follow:"
+                ))
+                parts += [types.Part.from_bytes(data=self.vision.to_png_bytes(f), mime_type="image/png") for f in shown]
+                self.pending_burst = []
+            parts.append(types.Part.from_text(text=prompt_text))
+            contents = [types.Content(role="user", parts=parts)]
 
             response = client.models.generate_content(
                 model=self.model_name,
@@ -516,8 +558,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model",
         type=str,
-        default=os.environ.get("COMPUTER_USE_MODEL", "gemini-3.8-flash"),
-        help="Gemini multimodal model name (default: gemini-3.8-flash)",
+        default=None,
+        help=f"Gemini multimodal model name (default: COMPUTER_USE_MODEL or {DEFAULT_MODEL})",
+    )
+    parser.add_argument(
+        "--lite",
+        action="store_true",
+        help=f"Flash-Lite (default: GAMERSEYE_LITE_MODEL or {LITE_MODEL}). Ignores COMPUTER_USE_MODEL. "
+        "--model wins when both are given.",
     )
     parser.add_argument(
         "--report",
@@ -561,7 +609,24 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Optional path to save burst frames as animated WebP or GIF (e.g. output.webp)",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    args.model = resolve_model(args.model, args.lite, os.environ)
+    return args
+
+
+# Flash-Lite 経路 (所有者 2026-11-16「flash-lite 経路も作っておこう」→「全て Flash-lite でいこう」)。
+# 直の API だけで使える (agy の一覧に無い)。既定も Flash-Lite。
+LITE_MODEL = "gemini-3.5-flash-lite"
+DEFAULT_MODEL = LITE_MODEL
+
+
+def resolve_model(model: Optional[str], lite: bool, env) -> str:
+    """--model > --lite (GAMERSEYE_LITE_MODEL か LITE_MODEL) > COMPUTER_USE_MODEL > DEFAULT_MODEL。"""
+    if model:
+        return model
+    if lite:
+        return env.get("GAMERSEYE_LITE_MODEL") or LITE_MODEL
+    return env.get("COMPUTER_USE_MODEL") or DEFAULT_MODEL
 
 
 def main() -> None:

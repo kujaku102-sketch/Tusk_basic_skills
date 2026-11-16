@@ -16,7 +16,11 @@ import time
 from typing import Any, Dict, List, Optional
 
 DEFAULT_AGY = "C:/Users/Masaya.Futamata/AppData/Local/agy/bin/agy"
-DEFAULT_MODEL = "gemini-3.8-flash-medium"
+# 所有者 2026-11-16「全て Flash-lite でいこう」。Flash-Lite は agy の一覧に無いので、直の道 (google-genai) で回す。
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
+# agy が受けるモデル (agy models の一覧、2026-11-16)。これ以外は直の道で回す。
+AGY_MODELS = {"gemini-3.8-flash-high", "gemini-3.8-flash-medium", "gemini-3.8-flash-low", "gemini-4-hydrogen-low"}
+DIRECT_MAX_STEPS = 12  # 直の道で 1 項目あたりに使う手数の上限
 RESULTS = ("pass", "fail", "unknown")
 
 RESULT_SCHEMA: Dict[str, Any] = {
@@ -43,8 +47,13 @@ RESULT_SCHEMA: Dict[str, Any] = {
 }
 
 
+ALLOWED_NON_FLASH = {"gemini-4-hydrogen-low"}  # 所有者 2026-11-16「モデルは 4-hydrogen-low の方がいい」
+
+
 def check_model(model: str) -> str:
-    """Flash 以外は拒否。"""
+    """Flash と、所有者が許した 1 つ (gemini-4-hydrogen-low) 以外は拒否。"""
+    if model.lower() in ALLOWED_NON_FLASH:
+        return model
     if "flash" not in model.lower() or not model.lower().startswith("gemini"):
         raise ValueError(f"Flash 以外のモデルは使えない: {model}")
     return model
@@ -69,7 +78,7 @@ def build_prompt(spec: Dict[str, Any], run_py: Path, out_dir: Path) -> str:
     lines.append(f"道具: python \"{_rel(run_py)}\"")
     lines.append(f"  窓の捕捉: {sel}  (以下の各コマンドに付ける)")
     lines.append("  配置: --place X,Y,W,H   単発撮影: --shot out.png   連射(15FPS): --burst DIR [--duration 1.5]")
-    lines.append("  操作: --click X,Y (窓内相対px) / --key 名前 / --type 文字列 / --close-window")
+    lines.append("  操作: --click X,Y (窓内相対px) / --double-click X,Y / --key 名前 / --type 文字列 / --close-window")
     lines.append("決まり:")
     lines.append("- 窓の位置とサイズは先に決めてある。ずれていたら --place で直す(起動直後 1280x960 は下端がタスクバーに隠れる)。")
     lines.append("- 閉じるのは --close-window だけ。Alt+F4 は使わない(安全装置で止まる)。試験の最後に必ず閉じる。")
@@ -221,13 +230,100 @@ RECOVER_PROMPT = "時間切れだ。これ以上操作せず、今わかって�
 RECOVER_TIMEOUT = 90
 
 
+def uses_agy(model: str) -> bool:
+    """agy が受けるモデルなら agy で、それ以外 (Flash-Lite など) は直の道で回す。"""
+    return model.lower() in AGY_MODELS
+
+
+DIRECT_GOAL = (
+    "GUI 試験の 1 項目を確かめる。確かめること: {check}\n"
+    "決まり: 窓を閉じない。Alt+F4 を押さない。確かめに要らない操作をしない。"
+    "ダイアログの設定 (チェック・選択) を変えない。読み込み中の画面は wait で待つ。"
+    "編集モードに入るには、対象の枠をダブルクリックする。"
+    "動き (ドラッグ・ホバー・アニメーション) を確かめる項目は、操作の直後に burst_capture (15FPS の連射) を使う。\n"
+    "今の画面で確かめられるなら、操作せずにすぐ finish_task を呼ぶ。手数の残りが 2 になったら、必ず finish_task を呼ぶ。"
+    "finish_task の summary の先頭は 'PASS:'・'FAIL:'・'UNKNOWN:' のどれかにして、"
+    "見えた事実を 1 行で書く。画面で確かめられなければ UNKNOWN。推測で PASS にしない。"
+)
+
+
+def parse_direct_summary(summary: str) -> str:
+    """finish_task の summary の先頭から結果を取る。読めなければ unknown。"""
+    head = (summary or "").strip().upper()
+    for r in RESULTS:
+        if head.startswith(r.upper() + ":"):
+            return r
+    return "unknown"
+
+
+def _make_direct_runner(pid: int, model: str):
+    from .runner import ComputerUseRunner
+    return ComputerUseRunner(pid=pid, model_name=model)
+
+
+def _run_once_direct(spec: Dict[str, Any], model: str, out_dir: Path, make_runner=_make_direct_runner,
+                     launch=None, finish=None) -> Dict[str, Any]:
+    """agy を使わずに、直の道 (runner.py の google-genai のループ) で項目ごとに確かめる。結果の形は agy と同じ。"""
+    target = spec["target"]
+    started = None
+    notes: List[str] = []
+    res: Dict[str, Any] = {"items": [], "steps": [], "captures": [], "anomalies": []}
+    if target.get("exe") and not target.get("pid"):
+        started = (launch or launch_and_place)(target["exe"], spec.get("document"), spec.get("place", "40,40,1200,800"),
+                                               spec.get("args"), float(spec.get("load_wait", DEFAULT_LOAD_WAIT)),
+                                               spec.get("open_keys"))
+        target = dict(target, pid=started["pid"])
+        if started.get("loaded") is False:
+            notes.append(f"文書の読み込みが {spec.get('load_wait', DEFAULT_LOAD_WAIT)} 秒で済まなかった (窓の題に文書の名前が出ない)")
+    max_steps = int(spec.get("max_steps") or DIRECT_MAX_STEPS)
+    try:
+        for it in spec["items"]:
+            item = {"id": it["id"], "result": "unknown", "evidence": [], "note": ""}
+            try:
+                r = make_runner(target["pid"], model)
+                before = out_dir / f"{it['id']}_00_before.png"
+                r.vision.capture(ensure_foreground=True).save(before, "PNG")
+                res["captures"].append(_rel(before))
+                r.run_autonomous_loop(goal=DIRECT_GOAL.format(check=it["check"]), max_steps=max_steps)
+                after = out_dir / f"{it['id']}_99_after.png"
+                (r.vision.last_capture or r.vision.capture()).save(after, "PNG")
+                res["captures"].append(_rel(after))
+                for h in r.history:
+                    res["steps"].append(f"{it['id']} step {h.step}: {h.action} {json.dumps(h.args, ensure_ascii=False)}"
+                                        + (f" ERR {h.error}" if h.error else ""))
+                burst_paths = []
+                for k, frames in enumerate(getattr(r, "burst_history", []) or []):
+                    from .runner import sample_frames
+                    for i, f in enumerate(sample_frames(frames)):
+                        p = out_dir / f"{it['id']}_burst{k}_{i:02d}.png"
+                        f.save(p, "PNG")
+                        burst_paths.append(_rel(p))
+                res["captures"] += burst_paths
+                item["result"] = parse_direct_summary(r.final_summary)
+                item["note"] = (r.final_summary or "").strip()[:500]
+                item["evidence"] = [_rel(before), _rel(after)] + burst_paths
+            except Exception as e:  # 1 項目の失敗は unknown にして次へ
+                item["note"] = f"直の道で失敗: {type(e).__name__}: {e}"[:500]
+            res["items"].append(item)
+    finally:
+        if started:
+            notes += (finish or finish_started)(started["pid"])
+    res = validate_result(res, spec, out_dir)
+    res["anomalies"] += notes
+    res["timed_out"] = False
+    res["recovered"] = False
+    return res
+
+
 def _run_once(spec: Dict[str, Any], model: str, out_dir: Path, runner) -> Dict[str, Any]:
     run_py = Path(__file__).resolve().parent.parent / "run.py"
     timeout = int(spec.get("timeout") or default_timeout(len(spec["items"])))
     target = spec["target"]
     started = None
     if target.get("exe") and not target.get("pid"):
-        started = launch_and_place(target["exe"], spec.get("document"), spec.get("place", "40,40,1200,800"))
+        started = launch_and_place(target["exe"], spec.get("document"), spec.get("place", "40,40,1200,800"),
+                                   spec.get("args"), float(spec.get("load_wait", DEFAULT_LOAD_WAIT)),
+                                   spec.get("open_keys"))
         spec = dict(spec, target=dict(target, pid=started["pid"]))
     cmd = _agy_cmd(spec, model, build_prompt(dict(spec, timeout=timeout), run_py, out_dir), out_dir, run_py, timeout)
     notes: List[str] = []
@@ -303,12 +399,16 @@ def run_handoff(spec_path: str, runner=subprocess.run) -> Dict[str, Any]:
     for n, part in enumerate(parts, 1):
         d = out_dir if len(parts) == 1 else out_dir / f"part{n}"
         d.mkdir(parents=True, exist_ok=True)
-        r = _run_once(dict(spec, items=part), model, d, runner)
+        if uses_agy(model):
+            r = _run_once(dict(spec, items=part), model, d, runner)
+        else:
+            r = _run_once_direct(dict(spec, items=part), model, d)
         for k in ("items", "steps", "captures", "anomalies"):
             merged[k] += r[k]
         merged["timed_out"] |= r["timed_out"]
         merged["recovered"] |= r["recovered"]
     merged["model"] = model
+    merged["route"] = "agy" if uses_agy(model) else "direct"
     (out_dir / "handoff_result.json").write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
     return merged
 
@@ -331,23 +431,71 @@ def _place(b, x: int, y: int, w: int, h: int) -> None:
     time.sleep(0.3)
 
 
-def launch_and_place(exe: str, doc: Optional[str], place: Optional[str]) -> Dict[str, Any]:
-    """アプリを agy の sandbox の外で起動し窓を配置する(sandbox 内で起動すると命令の終了で落ちる)。"""
+DEFAULT_LOAD_WAIT = 60.0  # 文書の読み込みを待つ上限 (秒)
+
+
+def wait_document_loaded(title_of, doc: Optional[str], load_wait: float, poll: float = 0.5,
+                         clock=time.time, sleep=time.sleep) -> bool:
+    """窓の題に文書の名前が出るまで待つ (読み込み中の画面やダイアログを操作役に触らせないため)。出たら True。"""
+    if not doc:
+        return True
+    name = Path(doc).name.lower()
+    end = clock() + load_wait
+    while True:
+        try:
+            if name in (title_of() or "").lower():
+                return True
+        except Exception:
+            pass
+        if clock() >= end:
+            return False
+        sleep(poll)
+
+
+def launch_and_place(exe: str, doc: Optional[str], place: Optional[str],
+                     args: Optional[List[str]] = None, load_wait: float = DEFAULT_LOAD_WAIT,
+                     open_keys: Optional[List[str]] = None) -> Dict[str, Any]:
+    """アプリを agy の sandbox の外で起動し窓を配置する(sandbox 内で起動すると命令の終了で落ちる)。
+    args は文書の後ろに付ける起動の引数 (例: act3_view の ["--page", "6"])。
+    open_keys は、窓が出た直後に押すキー (例: act3_view の開くときの確かめの画面を通す ["enter"])。
+    文書があれば、窓の題に文書の名前が出るまで (読み込みが済むまで) load_wait 秒まで待つ。"""
     from .binder import WindowBinder
-    proc = subprocess.Popen([exe] + ([doc] if doc else []), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+    import win32gui
+    cmd = [exe] + ([doc] if doc else []) + [str(a) for a in (args or [])]
+    proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL, close_fds=True, creationflags=0x00000008 | 0x00000200)
     deadline = time.time() + 20
     while time.time() < deadline:
         try:
             b = WindowBinder(pid=proc.pid)
             b.find_and_bind()
-            if place:
-                _place(b, *[int(v) for v in place.split(",")])
-            return {"pid": proc.pid, "title": b.bound_title}
+            break
         except Exception:
             time.sleep(0.5)
-    proc.kill()
-    raise RuntimeError("窓が20秒で出なかった")
+    else:
+        proc.kill()
+        raise RuntimeError("窓が20秒で出なかった")
+    if open_keys:
+        from .actuator import WindowActuator
+        time.sleep(1.0)  # 確かめの画面が描かれるまで
+        b.focus()
+        act = WindowActuator(b)
+        for k in open_keys:
+            act.press_key(k)
+            time.sleep(0.3)
+    def _main_title() -> str:
+        # 開くときの確かめの画面は別の窓のことがあるので、毎回 PID から主の窓を捕まえ直して題を読む
+        nb = WindowBinder(pid=proc.pid)
+        nb.find_and_bind()
+        return win32gui.GetWindowText(nb.hwnd) or nb.bound_title
+
+    loaded = wait_document_loaded(_main_title, doc, load_wait)
+    b = WindowBinder(pid=proc.pid)
+    b.find_and_bind()
+    if place:
+        _place(b, *[int(v) for v in place.split(",")])
+    b.update_rect()
+    return {"pid": proc.pid, "title": b.bound_title, "loaded": loaded}
 
 
 def close_if_alive(pid: int) -> bool:
@@ -376,6 +524,7 @@ def tool_cli(argv: List[str]) -> int:
     p.add_argument("--duration", type=float, default=1.5)
     p.add_argument("--fps", type=int, default=15)
     p.add_argument("--click")
+    p.add_argument("--double-click", dest="double_click")
     p.add_argument("--key")
     p.add_argument("--type", dest="text")
     p.add_argument("--close-window", action="store_true")
@@ -414,12 +563,15 @@ def tool_cli(argv: List[str]) -> int:
     b = _bind(a)
     if a.place:
         _place(b, *[int(v) for v in a.place.split(",")])
-    if a.click or a.key or a.text:
+    if a.click or a.double_click or a.key or a.text:
         from .actuator import WindowActuator
         act = WindowActuator(b)
         if a.click:
             x, y = [float(v) for v in a.click.split(",")]
             act.click(x, y)
+        if a.double_click:
+            x, y = [float(v) for v in a.double_click.split(",")]
+            act.double_click(x, y)
         if a.key:
             act.press_key(a.key)
         if a.text:
@@ -453,7 +605,8 @@ def tool_cli(argv: List[str]) -> int:
     return 0
 
 
-HANDOFF_FLAGS = ("--handoff", "--shot", "--burst", "--place", "--launch", "--click", "--key", "--type", "--close-window")
+HANDOFF_FLAGS = ("--handoff", "--shot", "--burst", "--place", "--launch", "--click", "--double-click", "--key", "--type",
+                 "--close-window")
 
 
 def is_handoff_invocation(argv: List[str]) -> bool:

@@ -14,6 +14,8 @@ from typing import Tuple, List, Dict
 
 import win32api
 import win32con
+import win32gui
+import win32process
 
 from .binder import WindowBinder
 
@@ -149,14 +151,36 @@ EXTENDED_VKS = {
 }
 
 
+class ForegroundGuardError(RuntimeError):
+    """対象の窓が前面でない、またはカーソルの下が対象の窓でないので、入力を送らずに止めた"""
+
+
 class WindowActuator:
     def __init__(self, binder: WindowBinder):
         self.binder = binder
         self._user32 = ctypes.windll.user32
 
+    def _guard(self, mouse: bool) -> None:
+        """入力を送る直前に毎回確かめる (2026-11-06: 前面を確かめずにクリックして、ほかのアプリに届いた恐れがあった)。
+        前面の窓が対象の PID でなければ、何も送らずに止める。マウスなら、カーソルの下の窓も対象の PID であること"""
+        pid = self.binder.bound_pid
+        if not pid:
+            raise ForegroundGuardError("対象の窓に結び付いていない (bound_pid が無い)")
+        fg = win32gui.GetForegroundWindow()
+        fg_pid = win32process.GetWindowThreadProcessId(fg)[1] if fg else 0
+        if fg_pid != pid:
+            raise ForegroundGuardError(
+                f"前面の窓が対象でない (前面 PID={fg_pid} '{win32gui.GetWindowText(fg) if fg else ''}'、対象 PID={pid})。入力は送っていない"
+            )
+        if mouse:
+            x, y = win32api.GetCursorPos()
+            if not self.binder.verify_point_ownership(x, y):
+                raise ForegroundGuardError(f"カーソルの下 ({x},{y}) が対象の窓でない。入力は送っていない")
+
     def _send_inputs(self, inputs: List[INPUT]) -> int:
         if not inputs:
             return 0
+        self._guard(mouse=any(i.type == INPUT_MOUSE for i in inputs))
         arr = (INPUT * len(inputs))(*inputs)
         return self._user32.SendInput(len(inputs), ctypes.byref(arr), ctypes.sizeof(INPUT))
 
@@ -183,6 +207,8 @@ class WindowActuator:
         SetCursorPos だけだと移動の知らせがボタンより遅れることがあり、アプリ (egui など) は
         押した位置を前のカーソル位置と取り違える (ボタンが押せない・選択がずれて動く)。
         SendInput の移動はボタンと同じ入力の列に入るので、押す前に必ず届く"""
+        # カーソルを動かす前にも、前面が対象かを確かめる (違えばカーソルも動かさない)
+        self._guard(mouse=False)
         win32api.SetCursorPos((abs_x, abs_y))
         self._send_inputs([self._absolute_move_input(abs_x, abs_y)])
         time.sleep(settle)
