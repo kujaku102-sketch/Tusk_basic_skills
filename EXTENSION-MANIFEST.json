@@ -66,7 +66,7 @@
     },
     {
       "path": "skills/gamerseye/SKILL.md",
-      "sha256": "300b469d4689a7af11989f7a822095106f4032ac601f3150f50f35b61285331b"
+      "sha256": "f4a80cbc8e74a61c9b3070805f223aadc0f29e87d4453f1995bb39fa31bb6c53"
     },
     {
       "path": "skills/gamerseye/gamerseye_core/__init__.py",
@@ -74,15 +74,19 @@
     },
     {
       "path": "skills/gamerseye/gamerseye_core/actuator.py",
-      "sha256": "ccd09bc3d5f07ae1fa42bc53350a6f06dea88971a7013405f96965edf4082a5d"
+      "sha256": "885535b6bc1840b8c1c22fb6f9aafe71c5f3be903047dd00e868260126a56730"
     },
     {
       "path": "skills/gamerseye/gamerseye_core/binder.py",
-      "sha256": "3e6e7cf6337b01cf80ad50f26b0c1bc7e0662bd2a52354de53e035b38e8663a0"
+      "sha256": "fa97134ccaa6781ba6d66af00045fc26b2ebbefe1f55432f7204d74b9740cbe4"
+    },
+    {
+      "path": "skills/gamerseye/gamerseye_core/handoff.py",
+      "sha256": "4a3520df57d1c11a20468c03859d1008d82580d0af3dccf8cb961524a1848d7f"
     },
     {
       "path": "skills/gamerseye/gamerseye_core/runner.py",
-      "sha256": "f50b2e85af0d22dec00ea6d6b79e40b43dfce9ca1bb650d11de44994389ee4e3"
+      "sha256": "232347b3400492bd59a3ed8175678ef4a53f4de192242f9388605da022e6bff6"
     },
     {
       "path": "skills/gamerseye/gamerseye_core/vision.py",
@@ -95,6 +99,18 @@
     {
       "path": "skills/gamerseye/run.py",
       "sha256": "d5ba0f9d5f033b780afc587578c4e55e8901eb7b4058cb6c14d34b4d94849bbd"
+    },
+    {
+      "path": "skills/gamerseye/tests/test_handoff.py",
+      "sha256": "139923d8d043f47df16625ecfca9c6622c6ae4414c152fe60de7c1f07cff1b3a"
+    },
+    {
+      "path": "skills/gamerseye/tests/test_runner_burst.py",
+      "sha256": "2cc75fc3531a5c2a3021df1e6cb086a0025d87ec65469d43efa01a370d36108b"
+    },
+    {
+      "path": "skills/gamerseye/tests/test_runner_lite.py",
+      "sha256": "337e692bec70ecbb09b51df66aa4333cd88b2ebd710e08d957acdb7cc9e0bcf6"
     },
     {
       "path": "skills/inq/SKILL.md",
