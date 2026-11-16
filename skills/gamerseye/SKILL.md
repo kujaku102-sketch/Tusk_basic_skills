@@ -50,7 +50,8 @@ python .agents/skills/gamerseye/run.py --title "TuskFolio" --goal "全メニュ�
 - `--title <REGEX>`: ウィンドウタイトルの正規表現（例: `"TuskFolio"`, `"InDesign"`）
 - `--pid <PID>`: プロセスID（直接指定）
 - `--goal <TEXT>`: エージェントに達成させる目的・検証タスク
-- `--model <NAME>`: 使用するモデル（既定: `gemini-3.8-flash`。2.5-flash は 404）
+- `--model <NAME>`: 使用するモデル（既定: 環境変数 `COMPUTER_USE_MODEL`、無ければ `gemini-3.5-flash-lite`。所有者 2026-11-16「全て Flash-lite でいこう」。2.5-flash は 404）
+- `--lite`: Flash-Lite（既定: 環境変数 `GAMERSEYE_LITE_MODEL`、無ければ `gemini-3.5-flash-lite`）。`COMPUTER_USE_MODEL` を無視する。`--model` と両方あれば `--model` が勝つ。API の一覧にある Flash-Lite（2026-11-16 時点）: `gemini-3.5-flash-lite`（GA）、`gemini-3.1-flash-lite`、`gemini-3.1-flash-lite-preview`、`gemini-flash-lite-latest`（`gemini-3.8-flash-lite-tts` は TTS 専用で使えない）
 - `--max-steps <N>`: 最大実行ステップ数（既定: 20）
 - `--dry-run`: 操作を行わず、ウィンドウ捕捉とキャプチャのみ確認
 - `--report <PATH>`: 結果マトリクス出力先（既定: `work/UI_OPERATION_MATRIX.md`）
@@ -96,11 +97,16 @@ spec.json:
 ```
 - `target`: `exe`(ハーネスが起動して配置) か `pid`(起動済みの窓)。`title` だけでは捕まえない(同じ名前の他人の窓を掴んで閉じないため)。agy にも `--pid` だけを渡し、`--close-window` は `--pid` が要る。
 - 呼び出し: `agy -p … --model gemini-3.8-flash-medium --output-format json --json-schema … --sandbox --add-dir … --print-timeout <秒>s`。`--dangerously-skip-permissions` は使わない。
-- モデルは Flash のみ(`gemini-3.8-flash-{low,medium,high}`。spec の `model` か環境変数 `GAMERSEYE_AGY_MODEL`)。他は拒否。
+- モデルは Flash 系と、所有者が許した `gemini-4-hydrogen-low` (2026-11-16) だけ。spec の `model` か環境変数 `GAMERSEYE_AGY_MODEL`。他は拒否。**既定は `gemini-3.5-flash-lite`** (所有者 2026-11-16「全て Flash-lite でいこう」)。
+- **道の振り分け**: agy の一覧にあるモデル (`gemini-3.8-flash-{low,medium,high}`・`gemini-4-hydrogen-low`) は agy で回す。それ以外 (Flash-Lite) は agy が受けないので、**直の道** (`runner.py` の google-genai のループ) で回す。直の道は項目ごとに窓を捕まえ、確かめを目的に最大 `max_steps` (既定 12) 手動かし、`finish_task` の summary の先頭 `PASS:`/`FAIL:`/`UNKNOWN:` を結果にする。根拠は項目ごとの前後 2 枚 (`<id>_00_before.png`・`<id>_99_after.png`)。直の道の操作役には `burst_capture` (15FPS の連射、メモリのまま) の道具があり、動き (ドラッグ・ホバー・アニメーション) を見る項目で使う。連射は次の手で時間で等間隔な 6 枚をモデルに見せ、根拠にも同じ 6 枚 (`<id>_burstK_NN.png`) を足す。結果の形 (items・steps・captures・anomalies) と `handoff_result.json` は agy と同じで、`route` に `agy` か `direct` が入る。直の道は API の鍵を `GEMINI_API_KEY` から読む。
+- spec の `args`: 起動の時に文書の後ろに付ける引数 (例: act3_view の `["--page", "6"]`)。目的のページを開いた状態から渡すときに使う。
+- spec の `open_keys`: 窓が出た直後に押すキーの並び (例: act3_view で .folio を開いたときの「開く: .folio の指定コンソール」を通す `["enter"]`)。押してから読み込みを待つ。
+  - act3_view は `args` に `--no-open-console` を入れれば、この画面を出さずに開く (弾力・書体は `--elastic on|off` などで指す)。ただしこの起動はエラーの小窓を出さず、`[TUSK_FORCE_STOP]` を stderr に出して終わる形になるので、エラーの小窓を見る項目では `open_keys` の方を使う。
+- spec の `load_wait` (既定 60 秒): ハーネスが `exe` を起動したとき、窓の題に文書の名前が出るまで (読み込みが済むまで) 待つ上限。済む前に操作役へ渡すと、読み込み中の画面やダイアログ (act3_view の「開く: .folio の指定コンソール」など) を触ってしまう。済まなかったら `anomalies` に 1 行。
 - 返り(標準出力と `out_dir/handoff_result.json`): `items[{id,result(pass|fail|unknown),evidence[],note}]`、`steps`、`captures`、`anomalies`。生出力は `out_dir/agy_raw.txt`。
 
 **agy が使う道具(同じ run.py)**
-`--shot out.png`(1枚撮る。Claude が最終判定で見る用にも使う) / `--burst DIR [--duration 1.5 --fps 15]`(連射をPNG保存) / `--place X,Y,W,H` / `--click X,Y` / `--key 名前` / `--type 文字列` / `--close-window` / `--launch EXE [--open DOC]`。窓は `--pid` か `--title` で捕捉。
+`--shot out.png`(1枚撮る。Claude が最終判定で見る用にも使う) / `--burst DIR [--duration 1.5 --fps 15]`(連射をPNG保存) / `--place X,Y,W,H` / `--click X,Y` / `--double-click X,Y`(編集モードに入る。`--click` 2 回ではダブルクリックにならない) / `--key 名前` / `--type 文字列` / `--close-window` / `--launch EXE [--open DOC]`。窓は `--pid` か `--title` で捕捉。
 
 **決まり**
 - 保存は写し(複製)にだけ。正本は別。

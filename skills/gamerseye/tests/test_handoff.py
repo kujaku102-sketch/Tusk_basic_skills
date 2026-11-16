@@ -9,8 +9,9 @@ class T(unittest.TestCase):
         self.d = Path(tempfile.mkdtemp())
         self.png = self.d / "a.png"
         self.png.write_bytes(b"x")
+        # agy の道の試験は、agy の受けるモデルを名指しする (既定は Flash-Lite で直の道になるため)
         self.spec = {"target": {"pid": 1}, "items": [{"id": "A", "check": "menu opens"}, {"id": "B", "check": "closes"}],
-                     "out_dir": str(self.d / "o"), "timeout": 5}
+                     "out_dir": str(self.d / "o"), "timeout": 5, "model": "gemini-3.8-flash-medium"}
         self.sp = self.d / "spec.json"
         self.sp.write_text(json.dumps(self.spec), encoding="utf-8")
 
@@ -35,7 +36,8 @@ class T(unittest.TestCase):
         c = calls[0]
         self.assertIn("--sandbox", c)
         self.assertNotIn("--dangerously-skip-permissions", c)
-        self.assertEqual(c[c.index("--model") + 1], h.DEFAULT_MODEL)
+        self.assertEqual(c[c.index("--model") + 1], "gemini-3.8-flash-medium")
+        self.assertEqual(r["route"], "agy")
         self.assertEqual(c[c.index("--output-format") + 1], "json")
         self.assertEqual(c[c.index("--print-timeout") + 1], "5s")
         self.assertEqual(r["captures"], [str(self.png)])
@@ -55,7 +57,7 @@ class T(unittest.TestCase):
         self.sp.write_text(json.dumps(self.spec), encoding="utf-8")
         with self.assertRaises(ValueError):
             h.run_handoff(str(self.sp), runner=self.fake("{}")[0])
-        self.spec.pop("model"); self.sp.write_text(json.dumps(self.spec), encoding="utf-8")
+        self.spec["model"] = "gemini-3.8-flash-medium"; self.sp.write_text(json.dumps(self.spec), encoding="utf-8")
         with self.assertRaises(RuntimeError):
             h.run_handoff(str(self.sp), runner=self.fake("", rc=1)[0])
 
@@ -153,8 +155,100 @@ class T(unittest.TestCase):
 
     def test_prompt_rules(self):
         p = h.build_prompt(self.spec, Path("run.py"), self.d)
-        for s in ("--place", "Alt+F4", "--close-window", "タスクバー", "[A]"):
+        for s in ("--place", "Alt+F4", "--close-window", "タスクバー", "[A]", "--double-click"):
             self.assertIn(s, p)
+
+    # ---- 直の道 (Flash-Lite、所有者 2026-11-16「全て Flash-lite でいこう」) ----
+
+    def test_default_is_flash_lite_direct(self):
+        self.assertEqual(h.check_model(h.DEFAULT_MODEL), h.DEFAULT_MODEL)
+        self.assertIn("flash-lite", h.DEFAULT_MODEL)
+        self.assertFalse(h.uses_agy(h.DEFAULT_MODEL))
+        self.assertTrue(h.uses_agy("gemini-3.8-flash-medium"))
+        self.assertTrue(h.uses_agy("gemini-4-hydrogen-low"))
+        self.assertIn("--double-click", h.HANDOFF_FLAGS)
+
+    def test_parse_direct_summary(self):
+        self.assertEqual(h.parse_direct_summary("PASS: 三角が出た"), "pass")
+        self.assertEqual(h.parse_direct_summary(" fail: 出ない"), "fail")
+        self.assertEqual(h.parse_direct_summary("UNKNOWN: 見えない"), "unknown")
+        self.assertEqual(h.parse_direct_summary("たぶん出た"), "unknown")
+        self.assertEqual(h.parse_direct_summary(""), "unknown")
+
+    def _fake_direct(self, summaries):
+        from PIL import Image
+        made = []
+
+        class V:
+            last_capture = None
+            def capture(self, ensure_foreground=False):
+                return Image.new("RGB", (8, 8), "white")
+
+        class Rec:
+            def __init__(self, n):
+                self.step, self.action, self.args, self.error = n, "click", {"rel_x": 1, "rel_y": 2}, None
+
+        class R:
+            def __init__(self, pid, model):
+                made.append((pid, model))
+                self.vision = V()
+                self.history = []
+                self.final_summary = ""
+            def run_autonomous_loop(self, goal, max_steps):
+                self.goal, self.max_steps = goal, max_steps
+                self.history = [Rec(1)]
+                self.burst_history = [[Image.new("RGB", (8, 8), "white") for _ in range(15)]]
+                s = summaries.pop(0)
+                if isinstance(s, Exception):
+                    raise s
+                self.final_summary = s
+        return R, made
+
+    def test_direct_route_results(self):
+        R, made = self._fake_direct(["PASS: 出た", "FAIL: 出ない"])
+        out = self.d / "direct"; out.mkdir()
+        spec = dict(self.spec, model=h.DEFAULT_MODEL, target={"pid": 55})
+        r = h._run_once_direct(spec, h.DEFAULT_MODEL, out, make_runner=R)
+        self.assertEqual([i["result"] for i in r["items"]], ["pass", "fail"])
+        self.assertEqual(made, [(55, h.DEFAULT_MODEL), (55, h.DEFAULT_MODEL)])
+        for it in r["items"]:
+            # 前後 2 枚 + 連射から選んだ 6 枚
+            self.assertEqual(len(it["evidence"]), 8)
+            self.assertTrue(all(Path(e).is_file() for e in it["evidence"]))
+            self.assertTrue(any("_burst0_05.png" in e for e in it["evidence"]))
+        self.assertEqual(len(r["captures"]), 16)
+        self.assertIn("burst_capture", h.DIRECT_GOAL)
+        self.assertTrue(r["steps"][0].startswith("A step 1: click"))
+
+    def test_direct_route_error_is_unknown_and_closes_started(self):
+        R, _ = self._fake_direct([RuntimeError("API が落ちた"), "PASS: ok"])
+        out = self.d / "direct2"; out.mkdir()
+        launched, finished = [], []
+        def launch(exe, doc, place, args, load_wait, open_keys):
+            launched.append((exe, doc, place, args, load_wait, open_keys))
+            return {"pid": 99, "title": "TuskFolio", "loaded": False}
+        spec = dict(self.spec, model=h.DEFAULT_MODEL, target={"exe": "act3_view.exe"}, document="d.folio",
+                    args=["--page", "6"], load_wait=30, open_keys=["enter"])
+        r = h._run_once_direct(spec, h.DEFAULT_MODEL, out, make_runner=R, launch=launch,
+                               finish=lambda pid: finished.append(pid) or [])
+        self.assertEqual(launched, [("act3_view.exe", "d.folio", "40,40,1200,800", ["--page", "6"], 30.0, ["enter"])])
+        self.assertEqual(finished, [99])
+        self.assertEqual([i["result"] for i in r["items"]], ["unknown", "pass"])
+        self.assertIn("API が落ちた", r["items"][0]["note"])
+        self.assertTrue(any("読み込み" in a for a in r["anomalies"]))
+
+    def test_wait_document_loaded(self):
+        t = {"now": 0.0}
+        titles = iter(["TuskFolio - [新規ドキュメント]", "TuskFolio - [新規ドキュメント]", "TuskFolio - [edit_all_copy.folio]"])
+        ok = h.wait_document_loaded(lambda: next(titles), "D:/x/edit_all_copy.folio", 10, poll=1,
+                                    clock=lambda: t["now"], sleep=lambda s: t.__setitem__("now", t["now"] + s))
+        self.assertTrue(ok)
+        self.assertEqual(t["now"], 2)
+        t["now"] = 0.0
+        ng = h.wait_document_loaded(lambda: "TuskFolio - [新規ドキュメント]", "a.folio", 3, poll=1,
+                                    clock=lambda: t["now"], sleep=lambda s: t.__setitem__("now", t["now"] + s))
+        self.assertFalse(ng)
+        self.assertTrue(h.wait_document_loaded(lambda: "", None, 0))
 
 
 if __name__ == "__main__":

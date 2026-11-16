@@ -292,14 +292,8 @@ class WindowBinder:
                 if target_tid and target_tid != cur_tid:
                     attached_target = bool(self._user32.AttachThreadInput(cur_tid, target_tid, True))
 
-                # Unlock SetForegroundWindow restriction with dummy Alt key state if needed
-                win32api.keybd_event(win32con.VK_MENU, 0, win32con.KEYEVENTF_EXTENDEDKEY, 0)
-                win32api.keybd_event(
-                    win32con.VK_MENU,
-                    0,
-                    win32con.KEYEVENTF_EXTENDEDKEY | win32con.KEYEVENTF_KEYUP,
-                    0,
-                )
+                # 前は前面の制限を外すために Alt キーを空打ちしていた。Alt はそのとき前面のアプリ
+                # (対象でない) に届くので外した (2026-11-06)。前面にできなければ、送る側 (actuator の _guard) が止める
 
                 self._user32.BringWindowToTop(wintypes.HWND(hwnd))
                 self._user32.SetForegroundWindow(wintypes.HWND(hwnd))
