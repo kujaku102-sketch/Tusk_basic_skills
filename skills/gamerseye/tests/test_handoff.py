@@ -250,6 +250,34 @@ class T(unittest.TestCase):
         self.assertFalse(ng)
         self.assertTrue(h.wait_document_loaded(lambda: "", None, 0))
 
+    def test_wait_document_loaded_with_a_fixed_native_title_uses_the_settled_check(self):
+        # act3_view の窓の題は固定 (「TuskFolio - Universal DTP Window」)。文書名は窓の中の自前のタイトルバーにだけ出る。
+        # 題に文書名が出ない間は、min_wait たってから画面が落ち着いたか (settled) で開いたとする
+        t = {"now": 0.0}
+        clock = lambda: t["now"]
+        sleep = lambda s_: t.__setitem__("now", t["now"] + s_)
+        states = iter([False, False, True])
+        ok = h.wait_document_loaded(lambda: "TuskFolio - Universal DTP Window", "D:/x/doc.folio", 20, poll=1,
+                                    clock=clock, sleep=sleep, settled=lambda: next(states), min_wait=3.0)
+        self.assertTrue(ok)
+        self.assertEqual(t["now"], 5, "3 秒たってから settled を見て、3 回目で真")
+        # min_wait の前は settled を見ない
+        t["now"] = 0.0
+        calls = []
+        ng = h.wait_document_loaded(lambda: "TuskFolio - Universal DTP Window", "a.folio", 2, poll=1,
+                                    clock=clock, sleep=sleep, settled=lambda: calls.append(1) or True, min_wait=3.0)
+        self.assertFalse(ng)
+        self.assertEqual(calls, [])
+        # 題が別の文書名の形 ([...]) のまま変わらない間は、settled が真でも開いたとしない (まだ読み込み中)
+        t["now"] = 0.0
+        ng = h.wait_document_loaded(lambda: "TuskFolio - [新規ドキュメント]", "a.folio", 5, poll=1,
+                                    clock=clock, sleep=sleep, settled=lambda: True, min_wait=0.0)
+        self.assertFalse(ng)
+        # settled が無ければ従来どおり題だけ
+        t["now"] = 0.0
+        self.assertFalse(h.wait_document_loaded(lambda: "TuskFolio - Universal DTP Window", "a.folio", 3, poll=1,
+                                                clock=clock, sleep=sleep))
+
 
 if __name__ == "__main__":
     unittest.main()

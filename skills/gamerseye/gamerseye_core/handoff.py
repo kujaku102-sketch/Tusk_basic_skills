@@ -435,21 +435,64 @@ DEFAULT_LOAD_WAIT = 60.0  # 文書の読み込みを待つ上限 (秒)
 
 
 def wait_document_loaded(title_of, doc: Optional[str], load_wait: float, poll: float = 0.5,
-                         clock=time.time, sleep=time.sleep) -> bool:
-    """窓の題に文書の名前が出るまで待つ (読み込み中の画面やダイアログを操作役に触らせないため)。出たら True。"""
+                         clock=time.time, sleep=time.sleep, settled=None, min_wait: float = 3.0) -> bool:
+    """文書が開くまで待つ (読み込み中の画面やダイアログを操作役に触らせないため)。開いたら True。
+
+    1. 窓の題に文書の名前が出たら開いた。
+    2. 窓の題が固定のアプリ (act3_view は飾り枠が無く、題は起動のときの「TuskFolio - Universal DTP Window」のまま、
+       文書名は窓の中に自前で描くタイトルバーにだけ出る) では、題に文書の名前は出ない。題に「[」が無い (= 文書名の入る
+       形でない) 間は `settled()` (画面が落ち着いたか) で見る。`min_wait` 秒たってから、`settled()` が真なら開いたとする。
+       題が別の文書名の形 (`[...]`) のまま変わらない間は、まだ読み込み中として待つ。
+    `settled` が None なら 1. だけ (従来どおり)。"""
     if not doc:
         return True
     name = Path(doc).name.lower()
-    end = clock() + load_wait
+    start = clock()
+    end = start + load_wait
     while True:
+        title = ""
         try:
-            if name in (title_of() or "").lower():
+            title = (title_of() or "")
+            if name in title.lower():
                 return True
         except Exception:
             pass
+        if settled is not None and "[" not in title and clock() - start >= min_wait:
+            try:
+                if settled():
+                    return True
+            except Exception:
+                pass
         if clock() >= end:
             return False
         sleep(poll)
+
+
+def pixels_settled(hwnd: int, gap: float = 1.0, min_changed_ratio: float = 0.02) -> bool:
+    """窓の中の画面が落ち着いたか: `gap` 秒あけた 2 回の撮影が同じで、真っ白・真っ黒の 1 色だけでもない。
+    文書の読み込み中は読み込みの表示が動くか、まだ何も描かれていない。"""
+    import mss
+    import win32gui
+    from PIL import Image, ImageChops
+    l, t, r, b = win32gui.GetWindowRect(hwnd)
+    box = {"left": l, "top": t, "width": max(1, r - l), "height": max(1, b - t)}
+
+    def grab():
+        with mss.mss() as sct:
+            shot = sct.grab(box)
+            return Image.frombytes("RGB", shot.size, shot.rgb)
+
+    a = grab()
+    time.sleep(gap)
+    c = grab()
+    if ImageChops.difference(a, c).getbbox() is not None:
+        return False
+    small = c.resize((64, 64))
+    colors = small.getcolors(maxcolors=64 * 64) or []
+    if not colors:
+        return False
+    top = max(n for n, _ in colors)
+    return (64 * 64 - top) / (64 * 64) >= min_changed_ratio
 
 
 def launch_and_place(exe: str, doc: Optional[str], place: Optional[str],
@@ -489,7 +532,12 @@ def launch_and_place(exe: str, doc: Optional[str], place: Optional[str],
         nb.find_and_bind()
         return win32gui.GetWindowText(nb.hwnd) or nb.bound_title
 
-    loaded = wait_document_loaded(_main_title, doc, load_wait)
+    def _settled() -> bool:
+        nb = WindowBinder(pid=proc.pid)
+        nb.find_and_bind()
+        return pixels_settled(nb.hwnd)
+
+    loaded = wait_document_loaded(_main_title, doc, load_wait, settled=_settled)
     b = WindowBinder(pid=proc.pid)
     b.find_and_bind()
     if place:

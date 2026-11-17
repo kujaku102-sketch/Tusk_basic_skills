@@ -66,7 +66,7 @@
     },
     {
       "path": "skills/gamerseye/SKILL.md",
-      "sha256": "f4a80cbc8e74a61c9b3070805f223aadc0f29e87d4453f1995bb39fa31bb6c53"
+      "sha256": "69db69ce75a843635fc54b291596cef446e4474af5b9968d7b8a0cf89c79a35b"
     },
     {
       "path": "skills/gamerseye/gamerseye_core/__init__.py",
@@ -82,7 +82,7 @@
     },
     {
       "path": "skills/gamerseye/gamerseye_core/handoff.py",
-      "sha256": "4a3520df57d1c11a20468c03859d1008d82580d0af3dccf8cb961524a1848d7f"
+      "sha256": "f0c4b00814967fdc5ac7053f1fa789d749b4171fcb28fb7ca51e9ba8f842031c"
     },
     {
       "path": "skills/gamerseye/gamerseye_core/runner.py",
@@ -102,7 +102,7 @@
     },
     {
       "path": "skills/gamerseye/tests/test_handoff.py",
-      "sha256": "139923d8d043f47df16625ecfca9c6622c6ae4414c152fe60de7c1f07cff1b3a"
+      "sha256": "d7e6aab6d7dc74cef8b0f558c79a45c468aa7ff15d92dc62cb6e1e1e643bb321"
     },
     {
       "path": "skills/gamerseye/tests/test_runner_burst.py",

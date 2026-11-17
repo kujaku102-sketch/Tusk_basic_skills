@@ -102,7 +102,7 @@ spec.json:
 - spec の `args`: 起動の時に文書の後ろに付ける引数 (例: act3_view の `["--page", "6"]`)。目的のページを開いた状態から渡すときに使う。
 - spec の `open_keys`: 窓が出た直後に押すキーの並び (例: act3_view で .folio を開いたときの「開く: .folio の指定コンソール」を通す `["enter"]`)。押してから読み込みを待つ。
   - act3_view は `args` に `--no-open-console` を入れれば、この画面を出さずに開く (弾力・書体は `--elastic on|off` などで指す)。ただしこの起動はエラーの小窓を出さず、`[TUSK_FORCE_STOP]` を stderr に出して終わる形になるので、エラーの小窓を見る項目では `open_keys` の方を使う。
-- spec の `load_wait` (既定 60 秒): ハーネスが `exe` を起動したとき、窓の題に文書の名前が出るまで (読み込みが済むまで) 待つ上限。済む前に操作役へ渡すと、読み込み中の画面やダイアログ (act3_view の「開く: .folio の指定コンソール」など) を触ってしまう。済まなかったら `anomalies` に 1 行。
+- spec の `load_wait` (既定 60 秒): ハーネスが `exe` を起動したとき、窓の題に文書の名前が出るまで (読み込みが済むまで) 待つ上限。**act3_view の窓の題は固定 (飾り枠が無く、文書名は窓の中の自前のタイトルバーにだけ出る) なので、題に文書名が出ない間は、3 秒たってから「窓の中の画面が 1 秒あけた 2 枚で同じで、1 色だけでない」(`pixels_settled`) を開いた印にする** (11-17、`loaded` が常に False になっていた根)。済む前に操作役へ渡すと、読み込み中の画面やダイアログ (act3_view の「開く: .folio の指定コンソール」など) を触ってしまう。済まなかったら `anomalies` に 1 行。
 - 返り(標準出力と `out_dir/handoff_result.json`): `items[{id,result(pass|fail|unknown),evidence[],note}]`、`steps`、`captures`、`anomalies`。生出力は `out_dir/agy_raw.txt`。
 
 **agy が使う道具(同じ run.py)**
