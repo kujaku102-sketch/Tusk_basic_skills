@@ -15,7 +15,8 @@ import sys
 import time
 from typing import Any, Dict, List, Optional
 
-DEFAULT_AGY = "C:/Users/Masaya.Futamata/AppData/Local/agy/bin/agy"
+# agy の場所: spec の "agy" > 環境変数 AGY_BIN > %LOCALAPPDATA%/agy/bin/agy (個人の場所を埋め込まない)。
+DEFAULT_AGY = str(Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local"))) / "agy" / "bin" / "agy")
 # 所有者 2026-11-16「全て Flash-lite でいこう」。Flash-Lite は agy の一覧に無いので、直の道 (google-genai) で回す。
 DEFAULT_MODEL = "gemini-3.5-flash-lite"
 # agy が受けるモデル (agy models の一覧、2026-11-16)。これ以外は直の道で回す。

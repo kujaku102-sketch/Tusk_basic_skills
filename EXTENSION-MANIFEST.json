@@ -82,7 +82,7 @@
     },
     {
       "path": "skills/gamerseye/gamerseye_core/handoff.py",
-      "sha256": "f0c4b00814967fdc5ac7053f1fa789d749b4171fcb28fb7ca51e9ba8f842031c"
+      "sha256": "21f20a46ffc995a090625e6f9405f69ecb36e66a462dade7523eab18957e7c66"
     },
     {
       "path": "skills/gamerseye/gamerseye_core/runner.py",
